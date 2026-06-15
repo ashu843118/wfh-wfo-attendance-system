@@ -2,8 +2,10 @@ package com.wfhwfo.attendance.demo;
 
 import com.wfhwfo.attendance.attendance.entity.AttendanceEvent;
 import com.wfhwfo.attendance.attendance.entity.AttendanceRecord;
+import com.wfhwfo.attendance.attendance.entity.AttendanceSession;
 import com.wfhwfo.attendance.attendance.repository.AttendanceEventRepository;
 import com.wfhwfo.attendance.attendance.repository.AttendanceRecordRepository;
+import com.wfhwfo.attendance.attendance.repository.AttendanceSessionRepository;
 import com.wfhwfo.attendance.attendance.util.GeoPointUtils;
 import com.wfhwfo.attendance.common.enums.Role;
 import com.wfhwfo.attendance.employee.entity.Employee;
@@ -53,6 +55,7 @@ public class DemoDataSeeder implements ApplicationRunner {
     private final OfficeLocationRepository officeLocationRepository;
     private final AttendancePolicyRepository attendancePolicyRepository;
     private final AttendanceRecordRepository attendanceRecordRepository;
+    private final AttendanceSessionRepository attendanceSessionRepository;
     private final AttendanceEventRepository attendanceEventRepository;
     private final AttendanceOutlierRepository attendanceOutlierRepository;
     private final NotificationRepository notificationRepository;
@@ -96,9 +99,23 @@ public class DemoDataSeeder implements ApplicationRunner {
                         record -> record.getEmployeeId() + ":" + record.getAttendanceDate(),
                         AttendanceRecord::getId));
 
+        List<AttendanceSession> sessions = attendanceResult.sessions().stream()
+                .peek(session -> session.setAttendanceRecordId(
+                        summaryKeyToId.get(session.getEmployeeId() + ":" + session.getAttendanceDate())))
+                .toList();
+        List<AttendanceSession> savedSessions = saveInBatches(sessions, attendanceSessionRepository::saveAll);
+
+        java.util.Map<String, Long> sessionKeyToId = savedSessions.stream()
+                .collect(Collectors.toMap(
+                        session -> session.getEmployeeId() + ":" + session.getAttendanceDate(),
+                        AttendanceSession::getId));
+
         List<AttendanceEvent> events = attendanceResult.events().stream()
-                .peek(event -> event.setAttendanceRecordId(
-                        summaryKeyToId.get(event.getEmployeeId() + ":" + event.getAttendanceDate())))
+                .peek(event -> {
+                    String dayKey = event.getEmployeeId() + ":" + event.getAttendanceDate();
+                    event.setAttendanceRecordId(summaryKeyToId.get(dayKey));
+                    event.setAttendanceSessionId(sessionKeyToId.get(dayKey));
+                })
                 .toList();
         saveInBatches(events, attendanceEventRepository::saveAll);
 
@@ -146,6 +163,7 @@ public class DemoDataSeeder implements ApplicationRunner {
                             .standardCheckInTime(LocalTime.parse(row.standardCheckInTime()))
                             .standardCheckOutTime(LocalTime.parse(row.standardCheckOutTime()))
                             .lateThresholdMinutes(row.lateThresholdMinutes())
+                            .requiredWfoMinutes(180)
                             .active(row.active())
                             .build();
                 })
@@ -156,20 +174,21 @@ public class DemoDataSeeder implements ApplicationRunner {
     private List<Employee> seedEmployees(Map<String, Team> teamsByName) {
         List<DemoCsvLoader.EmployeeRow> rows = csvLoader.loadEmployees();
         List<Employee> employees = new ArrayList<>();
-        Long defaultOfficeId = officeLocationRepository.findByActiveTrue().stream()
-                .findFirst()
-                .map(OfficeLocation::getId)
-                .orElse(null);
+        List<OfficeLocation> offices = officeLocationRepository.findByActiveTrue();
 
         for (DemoCsvLoader.EmployeeRow row : rows) {
             Long teamId = row.teamName() != null ? teamsByName.get(row.teamName()).getId() : null;
+            Long assignedOfficeId = null;
+            if (teamId != null && !offices.isEmpty()) {
+                assignedOfficeId = offices.get((int) ((teamId - 1) % offices.size())).getId();
+            }
             employees.add(Employee.builder()
                     .name(row.name())
                     .email(row.email())
                     .passwordHash(DEMO_PASSWORD_HASH)
                     .role(Role.valueOf(row.role()))
                     .teamId(teamId)
-                    .assignedOfficeLocationId(defaultOfficeId)
+                    .assignedOfficeLocationId(assignedOfficeId)
                     .active(true)
                     .build());
         }

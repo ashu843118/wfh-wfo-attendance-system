@@ -2,11 +2,14 @@ package com.wfhwfo.attendance.demo;
 
 import com.wfhwfo.attendance.attendance.entity.AttendanceEvent;
 import com.wfhwfo.attendance.attendance.entity.AttendanceRecord;
+import com.wfhwfo.attendance.attendance.entity.AttendanceSession;
 import com.wfhwfo.attendance.attendance.util.GeoPointUtils;
 import com.wfhwfo.attendance.common.enums.AttendanceEventType;
 import com.wfhwfo.attendance.common.enums.AttendanceMode;
+import com.wfhwfo.attendance.common.enums.AttendanceSessionStatus;
 import com.wfhwfo.attendance.common.enums.AttendanceStatus;
 import com.wfhwfo.attendance.common.enums.AttendanceTriggerMode;
+import com.wfhwfo.attendance.common.enums.CurrentSessionStatus;
 import com.wfhwfo.attendance.common.enums.ProcessingStatus;
 import com.wfhwfo.attendance.common.enums.Role;
 import com.wfhwfo.attendance.employee.entity.Employee;
@@ -45,6 +48,7 @@ public class DemoAttendanceGenerator {
         LocalDate startDate = endDate.minusDays(attendanceDays - 1L);
         List<AttendanceRecord> records = new ArrayList<>();
         List<AttendanceEvent> events = new ArrayList<>();
+        List<AttendanceSession> sessions = new ArrayList<>();
         List<PendingRecordRef> pendingRefs = new ArrayList<>();
 
         for (Employee employee : employees) {
@@ -108,6 +112,21 @@ public class DemoAttendanceGenerator {
                     checkOutLng = lng + 0.0001;
                 }
 
+                AttendanceEventType checkInEventType = decision.mode() == AttendanceMode.WFH
+                        ? AttendanceEventType.WFH_CONFIRMED_CHECK_IN
+                        : AttendanceEventType.MANUAL_CHECK_IN;
+                AttendanceEventType checkOutEventType = AttendanceEventType.MANUAL_CHECK_OUT;
+
+                boolean openSession = missingCheckout || (date.equals(endDate) && decision.bucket() % 5 == 0);
+                CurrentSessionStatus currentSessionStatus = openSession
+                        ? CurrentSessionStatus.OPEN
+                        : CurrentSessionStatus.CLOSED;
+
+                int totalOfficeMinutes = 0;
+                if (decision.mode() == AttendanceMode.WFO && checkOutDateTime != null) {
+                    totalOfficeMinutes = (int) java.time.Duration.between(checkInDateTime, checkOutDateTime).toMinutes();
+                }
+
                 AttendanceRecord record = AttendanceRecord.builder()
                         .employeeId(employee.getId())
                         .teamId(employee.getTeamId())
@@ -124,17 +143,37 @@ public class DemoAttendanceGenerator {
                         .checkOutGeoPoint(checkOutLat != null ? GeoPointUtils.createPoint(checkOutLat, checkOutLng) : null)
                         .attendanceMode(decision.mode())
                         .status(status)
+                        .currentSessionStatus(currentSessionStatus)
+                        .totalOfficeMinutes(totalOfficeMinutes > 0 ? totalOfficeMinutes : null)
                         .processingStatus(pending ? ProcessingStatus.CLASSIFICATION_PENDING : ProcessingStatus.COMPLETED)
                         .late(decision.late())
                         .distanceFromOfficeMeters(distanceMeters)
+                        .matchedOfficeLocationId(decision.mode() == AttendanceMode.WFO ? office.getId() : null)
                         .source("DEMO_SEED")
                         .build();
 
                 records.add(record);
-                events.add(buildEvent(employee, date, AttendanceEventType.CHECK_IN, checkInDateTime, lat, lng,
+
+                AttendanceSession session = AttendanceSession.builder()
+                        .employeeId(employee.getId())
+                        .teamId(employee.getTeamId())
+                        .attendanceDate(date)
+                        .sessionMode(decision.mode())
+                        .checkInEventType(checkInEventType)
+                        .checkInTime(checkInDateTime)
+                        .checkInTriggerMode(AttendanceTriggerMode.MANUAL)
+                        .checkOutTime(checkOutDateTime)
+                        .checkOutEventType(checkOutDateTime != null ? checkOutEventType : null)
+                        .autoCheckoutEligible(false)
+                        .status(openSession ? AttendanceSessionStatus.OPEN : AttendanceSessionStatus.CLOSED)
+                        .matchedOfficeLocationId(decision.mode() == AttendanceMode.WFO ? office.getId() : null)
+                        .build();
+                sessions.add(session);
+
+                events.add(buildEvent(employee, date, checkInEventType, checkInDateTime, lat, lng,
                         12.0 + (decision.bucket() % 8)));
                 if (checkOutDateTime != null) {
-                    events.add(buildEvent(employee, date, AttendanceEventType.CHECK_OUT, checkOutDateTime,
+                    events.add(buildEvent(employee, date, checkOutEventType, checkOutDateTime,
                             checkOutLat, checkOutLng, 15.0));
                 }
                 if (pending) {
@@ -143,7 +182,7 @@ public class DemoAttendanceGenerator {
             }
         }
 
-        return new AttendanceGenerationResult(records, events, pendingRefs);
+        return new AttendanceGenerationResult(records, events, sessions, pendingRefs);
     }
 
     private AttendanceEvent buildEvent(
@@ -251,6 +290,7 @@ public class DemoAttendanceGenerator {
     public record AttendanceGenerationResult(
             List<AttendanceRecord> records,
             List<AttendanceEvent> events,
+            List<AttendanceSession> sessions,
             List<PendingRecordRef> pendingRefs) {
     }
 }
