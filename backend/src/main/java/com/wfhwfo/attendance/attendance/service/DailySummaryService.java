@@ -103,9 +103,17 @@ public class DailySummaryService {
         } else if (isCheckOutEvent(lastEvent.getEventType())) {
             summary.setStatus(AttendanceStatus.CHECKED_OUT);
             summary.setCurrentSessionStatus(CurrentSessionStatus.CLOSED);
-        } else {
+        } else if (isCheckInEvent(lastEvent.getEventType())) {
             summary.setStatus(AttendanceStatus.CHECKED_IN);
             summary.setCurrentSessionStatus(CurrentSessionStatus.OPEN);
+        } else if (latestCheckOutEvent.isPresent()) {
+            summary.setStatus(AttendanceStatus.CHECKED_OUT);
+            summary.setCurrentSessionStatus(CurrentSessionStatus.CLOSED);
+        } else {
+            summary.setCurrentSessionStatus(CurrentSessionStatus.NONE);
+            if (summary.getFirstCheckInTime() == null) {
+                summary.setStatus(AttendanceStatus.RECORDED);
+            }
         }
 
         LocalDateTime eodClose = summary.getFinalCheckOutTime();

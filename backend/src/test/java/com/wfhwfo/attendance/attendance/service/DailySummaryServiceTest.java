@@ -6,6 +6,7 @@ import com.wfhwfo.attendance.attendance.entity.AttendanceSession;
 import com.wfhwfo.attendance.common.enums.AttendanceEventType;
 import com.wfhwfo.attendance.common.enums.AttendanceMode;
 import com.wfhwfo.attendance.common.enums.AttendanceSessionStatus;
+import com.wfhwfo.attendance.common.enums.CurrentSessionStatus;
 import com.wfhwfo.attendance.common.enums.AttendanceStatus;
 import com.wfhwfo.attendance.common.enums.AttendanceTriggerMode;
 import com.wfhwfo.attendance.policy.repository.AttendancePolicyRepository;
@@ -124,6 +125,28 @@ class DailySummaryServiceTest {
 
         assertThat(summary.getStatus()).isEqualTo(AttendanceStatus.MISSING_CHECKOUT);
         assertThat(summary.getFinalCheckOutTime()).isEqualTo(LocalDateTime.of(2026, 6, 14, 23, 59, 59));
+    }
+
+    @Test
+    void geofenceOnlyEventAfterCheckoutKeepsCheckedOutStatus() {
+        LocalDate date = LocalDate.of(2026, 6, 15);
+        AttendanceRecord summary = AttendanceRecord.builder()
+                .employeeId(1L)
+                .teamId(1L)
+                .attendanceDate(date)
+                .build();
+
+        List<AttendanceEvent> events = List.of(
+                event(1L, date, AttendanceEventType.AUTO_CHECK_IN, LocalDateTime.of(2026, 6, 15, 9, 30)),
+                event(2L, date, AttendanceEventType.AUTO_CHECK_OUT, LocalDateTime.of(2026, 6, 15, 12, 0)),
+                event(3L, date, AttendanceEventType.ENTERED_GEOFENCE, LocalDateTime.of(2026, 6, 15, 14, 0))
+        );
+
+        dailySummaryService.applySummary(summary, events, List.of(
+                wfoSession(date, LocalDateTime.of(2026, 6, 15, 9, 30), LocalDateTime.of(2026, 6, 15, 12, 0))));
+
+        assertThat(summary.getStatus()).isEqualTo(AttendanceStatus.CHECKED_OUT);
+        assertThat(summary.getCurrentSessionStatus()).isEqualTo(CurrentSessionStatus.CLOSED);
     }
 
     private AttendanceEvent event(long id, LocalDate date, AttendanceEventType type, LocalDateTime time) {

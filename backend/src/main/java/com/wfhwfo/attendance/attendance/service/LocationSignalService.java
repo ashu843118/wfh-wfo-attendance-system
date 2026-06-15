@@ -3,6 +3,7 @@ package com.wfhwfo.attendance.attendance.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wfhwfo.attendance.attendance.config.AutoAttendanceProperties;
+import com.wfhwfo.attendance.attendance.dto.AutoAttendanceEventRequest;
 import com.wfhwfo.attendance.attendance.dto.AttendanceActionResponse;
 import com.wfhwfo.attendance.attendance.dto.AttendanceRecordResponse;
 import com.wfhwfo.attendance.attendance.dto.AutoTrackingSessionState;
@@ -63,17 +64,15 @@ public class LocationSignalService {
 
         if (insideOffice) {
             if (!Boolean.TRUE.equals(session.getWasInside())) {
-                actionTaken = mergeAction(actionTaken, attendanceWriteService.recordTrackedEvent(
-                        user, today, AttendanceEventType.ENTERED_GEOFENCE, AttendanceTriggerMode.AUTO,
-                        location, AUTO_SOURCE, geofenceMatch));
+                attendanceWriteService.recordAutoEvent(
+                        user, today, buildAutoGeofenceRequest(location, AttendanceEventType.ENTERED_GEOFENCE));
             }
             session.setInsideSince(session.getInsideSince() != null ? session.getInsideSince() : signalTime);
             session.setOutsideSince(null);
         } else {
             if (Boolean.TRUE.equals(session.getWasInside())) {
-                actionTaken = mergeAction(actionTaken, attendanceWriteService.recordTrackedEvent(
-                        user, today, AttendanceEventType.EXITED_GEOFENCE, AttendanceTriggerMode.AUTO,
-                        location, AUTO_SOURCE, geofenceMatch));
+                attendanceWriteService.recordAutoEvent(
+                        user, today, buildAutoGeofenceRequest(location, AttendanceEventType.EXITED_GEOFENCE));
             }
             session.setOutsideSince(session.getOutsideSince() != null ? session.getOutsideSince() : signalTime);
             session.setInsideSince(null);
@@ -261,6 +260,14 @@ public class LocationSignalService {
 
     private String sessionKey(Long employeeId, LocalDate date) {
         return "attendance:auto:session:" + employeeId + ":" + date;
+    }
+
+    private AutoAttendanceEventRequest buildAutoGeofenceRequest(LocationPayload location, AttendanceEventType eventType) {
+        return AutoAttendanceEventRequest.builder()
+                .eventType(eventType)
+                .location(location)
+                .source(AUTO_SOURCE)
+                .build();
     }
 
     private AttendanceRecordResponse toRecordResponse(AttendanceRecord record) {
