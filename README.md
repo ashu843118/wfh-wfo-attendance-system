@@ -1,41 +1,23 @@
 # WFH/WFO Attendance Tracking App
 
-A responsive web/PWA application to track employee Work From Home (WFH) and Work From Office (WFO) attendance using geo-fencing. Built as a **modular monolith** demonstrating Principal Engineer-level backend design, PostGIS geospatial queries, transactional outbox async processing, Redis caching/locking, role-based dashboards, and enterprise-style UI.
+A responsive web/PWA application that tracks employee **Work From Office (WFO)** and **Work From Home (WFH)** attendance using geo-fencing. The system supports **Employee**, **Manager**, **Leadership**, and **Admin** roles with role-specific dashboards, daily attendance summaries, session/event history, and rule-based outlier detection.
+
+Built as a **modular monolith** (Spring Boot + React) with PostgreSQL/PostGIS, Redis caching, transactional outbox processing, and Docker Compose for one-command local evaluation.
 
 ## Tech Stack
 
 | Layer | Technologies |
 |-------|--------------|
-| Frontend | React, Vite, React Router, Axios, Recharts, PWA-ready |
 | Backend | Java 17, Spring Boot 3.x, Spring Security (JWT), JPA, Flyway |
 | Database | PostgreSQL 16 + PostGIS |
-| Cache/Lock | Redis, Redisson |
-| API Docs | Springdoc OpenAPI / Swagger UI |
+| Cache / locks | Redis, Redisson |
+| Frontend | React, Vite, React Router, Axios, Recharts, PWA-ready |
+| API docs | Springdoc OpenAPI / Swagger UI |
 | Deployment | Docker Compose |
 
-## Architecture Summary
+## Quick Start
 
-Single Spring Boot application with domain packages: `auth`, `employee`, `team`, `attendance`, `geofence`, `dashboard`, `outlier`, `notification`, `office`, `policy`, `outbox`, `audit`, `common`, `config`.
-
-Check-in returns immediately; WFO/WFH classification runs asynchronously via transactional outbox + PostGIS `ST_DWithin`.
-
-See [docs/architecture.md](docs/architecture.md) for details.
-
-## Project Structure
-
-```
-wfh-wfo-attendance-app/
-├── backend/          # Spring Boot modular monolith
-├── frontend/         # React PWA
-├── docs/               # Architecture, API, assumptions, trade-offs
-├── screenshots/        # UI screenshots (add after running app)
-├── docker-compose.yml
-└── README.md
-```
-
-## Quick Start (Evaluator Mode)
-
-**Recommended:** Docker Compose starts everything including PostGIS and Redis. You do **not** need to install PostgreSQL, PostGIS, or Redis locally.
+**Recommended:** run the full stack with Docker Compose (PostgreSQL, PostGIS, Redis, backend, and frontend).
 
 ```bash
 docker compose up --build
@@ -47,153 +29,130 @@ docker compose up --build
 | Backend API | http://localhost:8080 |
 | Swagger UI | http://localhost:8080/swagger-ui/index.html |
 | OpenAPI JSON | http://localhost:8080/v3/api-docs |
-| Actuator Health | http://localhost:8080/actuator/health |
+| Health | http://localhost:8080/actuator/health |
 
-## Manual Development Mode
-
-Start infrastructure only:
-
-```bash
-docker compose up -d postgres redis
-```
-
-**Backend:**
-
-```bash
-cd backend
-./mvnw spring-boot:run -Dspring-boot.run.profiles=docker-local
-```
-
-On Windows:
-
-```powershell
-cd backend
-.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=docker-local"
-```
-
-**Frontend:**
-
-```bash
-cd frontend
-npm install
-cp .env.example .env.local   # or create .env.local manually
-npm run dev
-```
-
-Frontend runs at http://localhost:3000 with `VITE_API_BASE_URL=http://localhost:8080`.
+See [docs/local-setup.md](docs/local-setup.md) for database access, reset instructions, and local geolocation testing tips.
 
 ## Demo Users
 
-| Email | Password | Role | Notes |
-|-------|----------|------|-------|
-| employee@demo.com | password | EMPLOYEE | Engineering team; today left open for live check-in |
-| manager@demo.com | password | MANAGER | Engineering team manager |
-| leader@demo.com | password | LEADERSHIP | Organization-wide dashboard |
-| admin@demo.com | password | ADMIN | Employee management (~100 employees) |
+All seeded users share the password **`password`**.
 
-All seeded employees use the password **`password`**.
+| Email | Role | Notes |
+|-------|------|-------|
+| employee@demo.com | EMPLOYEE | Engineering; today is left open for live attendance testing |
+| manager@demo.com | MANAGER | Engineering team manager dashboard |
+| leader@demo.com | LEADERSHIP | Organization-wide trends |
+| admin@demo.com | ADMIN | Employee, office, and policy administration |
 
-## Demo Data (Hybrid Seed)
+Additional demo employees (~100 total) are seeded across five teams. See demo CSVs in `backend/src/main/resources/demo-data/`.
 
-On first startup with `docker`, `docker-local`, or test profiles, the app seeds realistic demo data automatically. Production (`prod` profile) never seeds demo data.
+## Final Attendance Behavior (MVP)
+
+This is the **implemented product flow** evaluators should expect.
+
+### On login / Employee Dashboard open
+
+1. The app **automatically requests browser location permission** (no toggle to enable auto attendance).
+2. While the app is open, location signals are sent periodically for auto attendance.
+3. If permission is denied, a fallback message is shown and **manual check-in/check-out** remains available.
+
+### Inside assigned office geofence
+
+- If the employee has **no active session**, the system waits for a short stability period (~15 seconds inside the fence), then **auto check-in** is recorded.
+- Session mode = **WFO**, check-in source = **AUTO**.
+- **Auto checkout** is allowed for these sessions when the employee remains outside the assigned office geofence for a configured grace period (60 seconds in demo; 15–30 minutes recommended in production).
+
+### Outside assigned office geofence
+
+- The system **does not auto check-in** and **does not silently mark WFH**.
+- A prompt asks: *"Do you want to check in as Work From Home?"*
+  - **Check in as WFH** → manual/confirmed WFH session
+  - **Not now** → no attendance created; manual check-in remains available
+
+### Manual check-in / check-out
+
+- **Manual check-in** always available when no active session exists.
+- Backend classifies the session from current location vs assigned office geofence:
+  - Inside fence → **WFO**
+  - Outside fence → **WFH**
+- **Manual checkout** is available whenever an active session is open.
+- Manual and WFH-confirmed sessions **do not auto checkout**; they require manual checkout or **end-of-day (EOD) system close**.
+
+### Same-day re-check-in
+
+- Multiple sessions per day are supported.
+- After checkout, check-in is enabled again.
+- Check-in is disabled **only while a session is open**.
+- Checkout is enabled **only while a session is open**.
+
+### Daily summary and final mode
+
+- **`attendance_events`** and **`attendance_sessions`** store detailed history (auto, manual, geofence, system events).
+- **`attendance_records`** stores one **daily summary** row per employee per date.
+- Final daily **`attendance_mode`** is **WFO** or **WFH only** — **no HYBRID** in MVP.
+- Final mode is based on **`total_office_minutes`** (sum of all completed WFO session durations) compared to **`required_wfo_minutes`** (default **180**, configurable per team policy).
+- A later WFH session on the same day does **not** downgrade a day that already met the office-time threshold.
+
+Dashboards (Employee, Manager, Leadership) read from **`attendance_records`** daily summaries; drill-down APIs expose session/event history.
+
+## Key Product Decisions
+
+| Decision | Why |
+|----------|-----|
+| **One assigned office per employee (MVP)** | Simplifies geofence rules and cache keys; multi-office support is a documented future extension. |
+| **Auto WFO inside fence, confirmed WFH outside** | Geofence presence is strong evidence of WFO; outside the fence could mean home, travel, leave, or GPS error — WFH requires explicit confirmation. |
+| **Auto checkout only for auto WFO sessions** | Predictable behavior; manual/WFH sessions need explicit checkout or EOD close. |
+| **WFO/WFH daily mode only (no HYBRID)** | Keeps manager and leadership reporting simple for MVP. |
+| **Office minutes drive final WFO day** | Supports split days (office morning + home afternoon) while still counting as a WFO day when threshold is met. |
+| **Location only while app is open** | Respects browser/PWA constraints and privacy expectations; no background tracking when the tab is closed. |
+| **Redis office cache** | Reduces repeated DB reads for geofence validation; PostgreSQL remains source of truth. |
+| **Transactional outbox (not Kafka)** | Simpler MVP infrastructure; Kafka noted as a future scale path. |
+
+## Privacy
+
+- Location is used **only for attendance classification** (check-in/out and auto attendance while the app is open).
+- Location tracking is **active only while the Employee Dashboard PWA is open** in the browser.
+- **No background location tracking** when the browser tab or PWA is closed.
+
+## Project Structure
+
+```
+wfh-wfo-attendance-app/
+├── backend/          # Spring Boot modular monolith
+├── frontend/         # React PWA
+├── docs/             # Architecture, API, assumptions, trade-offs, local setup
+├── screenshots/      # UI screenshots
+├── docker-compose.yml
+└── README.md
+```
+
+## Demo Data
+
+On first startup in `docker` / `docker-local` profiles, the app seeds realistic demo data (skipped if 90+ employees already exist).
 
 | Item | Count |
 |------|-------|
-| Employees | 100 |
-| Teams | 5 (Engineering, Quality Assurance, Product, HR, Finance) |
-| Managers | 5 (one per team) |
-| Leadership / Admin | 1 each |
-| Office locations | 5 |
+| Employees | ~100 |
+| Teams | 5 |
+| Office locations | 5 (Pune, Mumbai, Bangalore, Hyderabad, Delhi NCR) |
 | Attendance policies | 1 per team |
-| Attendance history | Last 30 calendar days (weekdays only) |
-| Outliers | Intentional per-team outliers |
-| Notifications | Manager outlier alerts + sample employee reminders |
+| History | ~30 weekdays of attendance, sessions, outliers, notifications |
 
-**Seed strategy**
-
-1. **CSV reference data** in `backend/src/main/resources/demo-data/`:
-   - `teams.csv`, `employees.csv`, `office_locations.csv`, `attendance_policies.csv`
-2. **Java deterministic generator** for attendance records, outliers, and notifications (fixed random seed `42`).
-
-**Idempotency:** If the database already contains 90+ employees, seeding is skipped on restart.
-
-**Attendance mix (approximate):** 55–65% WFO, 25–35% WFH, 5–10% absent, 8–12% late check-ins, 2–5% missing check-outs, plus a small number of classification-pending records for dashboard demos.
-
-### Reset demo data
-
-Remove Docker volumes and rebuild for a completely fresh seed:
+Reset completely:
 
 ```bash
 docker compose down -v
 docker compose up --build
 ```
 
-This drops PostgreSQL data and re-runs Flyway migrations plus the Java demo seeder.
-
-## Database Inspection (DBeaver)
-
-PostGIS runs inside Docker and is exposed on **localhost:5433** to avoid conflicts with a local PostgreSQL install.
-
-| Setting | Value |
-|---------|-------|
-| Host | localhost |
-| Port | 5433 |
-| Database | attendance_db |
-| Username | attendance_user |
-| Password | attendance_pass |
-
 ## Running Tests
 
-**Backend:**
-
 ```bash
-cd backend
-./mvnw test
+cd backend && ./mvnw test
+cd frontend && npm run build
 ```
 
-**Frontend build:**
-
-```bash
-cd frontend
-npm run build
-```
-
-## Screenshots
-
-Add screenshots of login page and dashboards to the `screenshots/` folder after running the app locally.
-
-## Hosted Demo
-
-_Placeholder for future Vercel/Netlify (frontend) + Render/Railway (backend) deployment._
-
-Configure frontend with `VITE_API_BASE_URL` pointing to the hosted backend URL.
-
-## Spring Profiles
-
-| Profile | Use case |
-|---------|----------|
-| `docker-local` | Manual backend against Docker Postgres/Redis on localhost:5433 |
-| `docker` | Full Docker Compose stack (service hostnames `postgres`, `redis`) |
-| `prod` | Hosted deployment with env vars (`DATABASE_URL`, `JWT_SECRET`, etc.) |
-
-The base `application.yaml` does not include a datasource — always activate a profile when running the backend.
-
-## Geolocation Notes
-
-- Check-in/check-out requires browser location permission.
-- HTTPS (or localhost) is required for the Geolocation API in most browsers.
-- Location is captured only on explicit check-in/check-out actions, not continuously.
-
-## Known Limitations & Future Enhancements
-
-- Demo JWT auth only (enterprise SSO in production)
-- In-app notifications only (no email/SMS/push)
-- Polling instead of WebSocket/SSE
-- Async classification (eventually consistent dashboards)
-- Kafka mentioned as future replacement for in-process outbox poller
-- Module extraction to microservices when scale requires
-
-See [docs/tradeoffs.md](docs/tradeoffs.md) and [docs/assumptions.md](docs/assumptions.md).
+On Windows use `.\mvnw.cmd` instead of `./mvnw`.
 
 ## Documentation
 
@@ -201,3 +160,15 @@ See [docs/tradeoffs.md](docs/tradeoffs.md) and [docs/assumptions.md](docs/assump
 - [API Design](docs/api-design.md)
 - [Assumptions](docs/assumptions.md)
 - [Trade-offs](docs/tradeoffs.md)
+- [Local Setup](docs/local-setup.md)
+
+## Known Limitations & Future Enhancements
+
+- Demo JWT auth (enterprise SSO in production)
+- In-app notifications only (no email/SMS/push)
+- Polling instead of WebSocket/SSE for live dashboard updates
+- PWA foreground location only (native app for true background geofencing)
+- Transactional outbox poller (Kafka as future event bus)
+- Multiple offices per employee (future `employee_office_assignments` table)
+
+See [docs/tradeoffs.md](docs/tradeoffs.md) and [docs/assumptions.md](docs/assumptions.md) for details.
