@@ -1,0 +1,31 @@
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-layout__main {
+  flex: 1;
+  margin-left: var(--sidebar-width);
+  min-height: 100vh;
+  background: var(--color-bg-primary);
+  position: relative;
+}
+
+.app-layout__global-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0.75rem 1.5rem 0;
+  min-height: 3rem;
+}
+
+.app-layout__content {
+  padding: 1.5rem;
+  max-width: 1400px;
+}
+
+@media (max-width: 768px) {
+  .app-layout__main {
+    margin-left: 0;
+  }
+}

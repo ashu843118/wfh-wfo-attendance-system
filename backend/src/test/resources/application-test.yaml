@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgis:16-3.4:///attendance_db
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+  jpa:
+    hibernate:
+      ddl-auto: none
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+app:
+  jwt:
+    secret: test-secret-key-for-unit-and-integration-tests-min-256-bits-long!!
+    expiration-ms: 3600000
+  cors:
+    allowed-origins: http://localhost:3000
+  demo:
+    seed:
+      enabled: true
+      min-employees-to-skip: 90
+      attendance-days: 30

@@ -1,0 +1,3 @@
+-- Demo data is loaded by the Java DemoDataSeeder (CSV + deterministic generator).
+-- Runs on docker / docker-local / test profiles when app.demo.seed.enabled=true.
+-- See README for demo data details and reset instructions.

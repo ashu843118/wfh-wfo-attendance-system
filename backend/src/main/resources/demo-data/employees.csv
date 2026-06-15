@@ -1,0 +1,101 @@
+name,email,role,team_name,manager_email
+Priya Manager,manager@demo.com,MANAGER,Engineering,
+Anita Desai,qa.manager@demo.com,MANAGER,Quality Assurance,
+Rohit Mehta,product.manager@demo.com,MANAGER,Product,
+Kavita Nair,hr.manager@demo.com,MANAGER,HR,
+Suresh Iyer,finance.manager@demo.com,MANAGER,Finance,
+Rajiv Leader,leader@demo.com,LEADERSHIP,,
+Admin User,admin@demo.com,ADMIN,,
+Ashutosh Kumar,employee@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Rahul Gupta,eng.rahul.gupta@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Sneha Patel,eng.sneha.patel@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Amit Reddy,eng.amit.reddy@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Neha Khan,eng.neha.khan@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Vikram Joshi,eng.vikram.joshi@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Pooja Rao,eng.pooja.rao@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Arjun Menon,eng.arjun.menon@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Divya Nair,eng.divya.nair@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Karan Iyer,eng.karan.iyer@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Meera Desai,eng.meera.desai@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Sanjay Kapoor,eng.sanjay.kapoor@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Anjali Malhotra,eng.anjali.malhotra@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Ravi Chopra,eng.ravi.chopra@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Deepa Bhat,eng.deepa.bhat@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Manish Pillai,eng.manish.pillai@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Swati Saxena,eng.swati.saxena@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Nikhil Tiwari,eng.nikhil.tiwari@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Gaurav Mishra,eng.gaurav.mishra@demo.com,EMPLOYEE,Engineering,manager@demo.com
+Shreya Das,qa.shreya.das@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Harish Roy,qa.harish.roy@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Lata Ghosh,qa.lata.ghosh@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Varun Mehta,qa.varun.mehta@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Kiran Shah,qa.kiran.shah@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Aditya Kulkarni,qa.aditya.kulkarni@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Nisha Pandey,qa.nisha.pandey@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Pranav Agarwal,qa.pranav.agarwal@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Ritu Shetty,qa.ritu.shetty@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Sameer Thakur,qa.sameer.thakur@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Tanvi Banerjee,qa.tanvi.banerjee@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Yash Chatterjee,qa.yash.chatterjee@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Isha Mukherjee,qa.isha.mukherjee@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Mohit Sinha,qa.mohit.sinha@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Preeti Dubey,qa.preeti.dubey@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Akash Yadav,qa.akash.yadav@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Sonal Jain,qa.sonal.jain@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Rajesh Srivastava,qa.rajesh.srivastava@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Geeta Bhatt,qa.geeta.bhatt@demo.com,EMPLOYEE,Quality Assurance,qa.manager@demo.com
+Vivek Chauhan,prod.vivek.chauhan@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Sunil Gowda,prod.sunil.gowda@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Rekha Hegde,prod.rekha.hegde@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Ashok Naik,prod.ashok.naik@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Madhuri Kaur,prod.madhuri.kaur@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Chetan Ali,prod.chetan.ali@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Payal Fernandes,prod.payal.fernandes@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Dinesh Bose,prod.dinesh.bose@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Uma Tripathi,prod.uma.tripathi@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Farhan Desai,prod.farhan.desai@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Zara Sharma,prod.zara.sharma@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Rohit Verma,prod.rohit.verma@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Kavita Singh,prod.kavita.singh@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Rahul Gupta,prod.rahul.gupta@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Sneha Patel,prod.sneha.patel@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Amit Reddy,prod.amit.reddy@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Neha Khan,prod.neha.khan@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Vikram Joshi,prod.vikram.joshi@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Pooja Rao,prod.pooja.rao@demo.com,EMPLOYEE,Product,product.manager@demo.com
+Arjun Menon,hr.arjun.menon@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Divya Nair,hr.divya.nair@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Karan Iyer,hr.karan.iyer@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Meera Desai,hr.meera.desai@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Sanjay Kapoor,hr.sanjay.kapoor@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Anjali Malhotra,hr.anjali.malhotra@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Ravi Chopra,hr.ravi.chopra@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Deepa Bhat,hr.deepa.bhat@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Manish Pillai,hr.manish.pillai@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Swati Saxena,hr.swati.saxena@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Nikhil Tiwari,hr.nikhil.tiwari@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Gaurav Mishra,hr.gaurav.mishra@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Shreya Das,hr.shreya.das@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Harish Roy,hr.harish.roy@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Lata Ghosh,hr.lata.ghosh@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Varun Mehta,hr.varun.mehta@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Kiran Shah,hr.kiran.shah@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Aditya Kulkarni,hr.aditya.kulkarni@demo.com,EMPLOYEE,HR,hr.manager@demo.com
+Nisha Pandey,fin.nisha.pandey@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Pranav Agarwal,fin.pranav.agarwal@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Ritu Shetty,fin.ritu.shetty@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Sameer Thakur,fin.sameer.thakur@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Tanvi Banerjee,fin.tanvi.banerjee@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Yash Chatterjee,fin.yash.chatterjee@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Isha Mukherjee,fin.isha.mukherjee@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Mohit Sinha,fin.mohit.sinha@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Preeti Dubey,fin.preeti.dubey@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Akash Yadav,fin.akash.yadav@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Sonal Jain,fin.sonal.jain@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Rajesh Srivastava,fin.rajesh.srivastava@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Geeta Bhatt,fin.geeta.bhatt@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Vivek Chauhan,fin.vivek.chauhan@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Sunil Gowda,fin.sunil.gowda@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Rekha Hegde,fin.rekha.hegde@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Ashok Naik,fin.ashok.naik@demo.com,EMPLOYEE,Finance,finance.manager@demo.com
+Madhuri Kaur,fin.madhuri.kaur@demo.com,EMPLOYEE,Finance,finance.manager@demo.com

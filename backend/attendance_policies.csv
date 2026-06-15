@@ -1,0 +1,6 @@
+﻿team_name,minimum_wfo_days_per_week,standard_check_in_time,standard_check_out_time,late_threshold_minutes,active
+Engineering,2,09:30,18:30,15,true
+Quality Assurance,2,09:30,18:30,15,true
+Product,3,09:45,18:30,10,true
+HR,2,09:00,18:00,10,true
+Finance,3,09:30,18:30,15,true

@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: attendance
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.spatial.dialect.postgis.PostgisPG10Dialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:wfhwfo-attendance-demo-secret-key-change-in-production-min-256-bits-long!!}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  cors:
+    allowed-origins: http://localhost:3000,http://localhost:5173
+  outbox:
+    poll-interval-ms: 5000
+    batch-size: 10
+    max-retries: 3
+  cache:
+    office-locations-ttl-seconds: 300
+    employee-office-ttl-seconds: 900
+    dashboard-ttl-seconds: 60
+  auth:
+    login-rate-limit:
+      max-attempts: 5
+      window-minutes: 15
+  demo:
+    seed:
+      enabled: false
+      min-employees-to-skip: 90
+      attendance-days: 30
+      random-seed: 42
+      batch-size: 200
+  attendance:
+    auto:
+      check-in-stable-seconds: 15
+      checkout-grace-seconds: 60
+    day-close:
+      default-close-time: "23:59:59"
+      cron: "0 5 0 * * *"
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui/index.html
+
+logging:
+  level:
+    com.wfhwfo.attendance: INFO
+    org.hibernate.SQL: WARN

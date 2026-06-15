@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/attendance_db
+    username: attendance_user
+    password: attendance_pass
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+app:
+  cors:
+    allowed-origins: http://localhost:3000,http://localhost:5173
+  demo:
+    seed:
+      enabled: true
