@@ -76,32 +76,32 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture diagr
 
 ```mermaid
 flowchart TD
-    User[Employee / Manager / Leadership / Admin] --> Web[React PWA Frontend]
-    Web --> Auth[Authentication and RBAC]
-    Web --> Attendance[Attendance Module]
-    Web --> Dashboard[Dashboard Module]
-    Web --> Admin[Admin Configuration]
-    Attendance --> Geofence[Geofence Validation]
-    Attendance --> Events[Attendance Events]
-    Attendance --> Summary[Daily Attendance Summary]
-    Attendance --> Outlier[Outlier Detection]
-    Geofence --> PostGIS[(PostgreSQL + PostGIS)]
-    Geofence --> Redis[(Redis Office Cache)]
+    User["Employee Manager Leadership Admin"] --> Web["React PWA Frontend"]
+    Web --> Auth["Authentication and RBAC"]
+    Web --> Attendance["Attendance Module"]
+    Web --> Dashboard["Dashboard Module"]
+    Web --> Admin["Admin Configuration"]
+    Attendance --> Geofence["Geofence Validation"]
+    Attendance --> Events["Attendance Events"]
+    Attendance --> Summary["Daily Attendance Summary"]
+    Attendance --> Outlier["Outlier Detection"]
+    Geofence --> PostGIS["PostgreSQL PostGIS"]
+    Geofence --> Redis["Redis Office Cache"]
 ```
 
 ### Employee attendance flow (summary)
 
 ```mermaid
 flowchart TD
-    Start[Open Employee Dashboard] --> Status{Active session?}
-    Status -->|WFO| Monitor[Auto-checkout monitoring]
-    Status -->|WFH| Manual[Manual checkout or EOD close]
-    Status -->|No| Loc[Get location once]
-    Loc --> Geo{Inside assigned office?}
-    Geo -->|Yes| AutoWFO[Auto check-in as WFO]
-    Geo -->|No| Prompt[WFH confirmation prompt]
+    Start["Open Employee Dashboard"] --> Status{"Active session?"}
+    Status -->|WFO| Monitor["Auto checkout monitoring"]
+    Status -->|WFH| Manual["Manual checkout or EOD close"]
+    Status -->|No| Loc["Get location once"]
+    Loc --> Geo{"Inside assigned office?"}
+    Geo -->|Yes| AutoWFO["Auto check in as WFO"]
+    Geo -->|No| Prompt["WFH confirmation prompt"]
     AutoWFO --> Monitor
-    Prompt -->|Confirm| WFH[Check in as WFH]
+    Prompt -->|Confirm| WFH["Check in as WFH"]
     WFH --> Manual
 ```
 

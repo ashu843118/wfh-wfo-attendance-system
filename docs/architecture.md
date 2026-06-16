@@ -8,20 +8,20 @@ The WFH/WFO Attendance Tracking application is a **modular monolith**: one deplo
 
 ```mermaid
 flowchart LR
-    Browser[React PWA / Browser] --> API[Spring Boot REST API]
+    Browser["React PWA Browser"] --> API["Spring Boot REST API"]
 
-    API --> Auth[Auth Module<br/>JWT + RBAC]
-    API --> Attendance[Attendance Module]
-    API --> Dashboard[Dashboard Module]
-    API --> Admin[Admin Module]
+    API --> Auth["Auth Module - JWT and RBAC"]
+    API --> Attendance["Attendance Module"]
+    API --> Dashboard["Dashboard Module"]
+    API --> Admin["Admin Module"]
 
-    Attendance --> Geo[Geofence Service]
-    Attendance --> Lock[Redisson Lock]
-    Attendance --> Outbox[Outbox Event Writer]
-    Attendance --> Audit[Audit/Event Writer]
+    Attendance --> Geo["Geofence Service"]
+    Attendance --> Lock["Redisson Lock"]
+    Attendance --> OutboxWriter["Outbox Event Writer"]
+    Attendance --> Audit["Audit and Event Writer"]
 
-    Geo --> Redis[(Redis Cache<br/>office:employee:{id})]
-    Geo --> PostGIS[(PostgreSQL + PostGIS<br/>Office + Attendance Data)]
+    Geo --> Redis["Redis Cache - office employee id"]
+    Geo --> PostGIS["PostgreSQL PostGIS - Office and Attendance Data"]
 
     Dashboard --> Redis
     Dashboard --> PostGIS
@@ -29,19 +29,20 @@ flowchart LR
     Admin --> PostGIS
     Admin --> Redis
 
-    Outbox --> DBOutbox[(outbox_events)]
-    Scheduler[Spring Scheduled Jobs] --> DBOutbox
-    Scheduler --> EOD[EOD Attendance Close Job]
-    Scheduler --> Outlier[Outlier Detection Job]
+    OutboxWriter --> OutboxTable["Outbox Events Table"]
 
-    DBOutbox --> Async[Async Processors]
-    Async --> Notification[Notification Module]
-    Async --> OutlierMod[Outlier Module]
-    Async --> DashboardCache[Dashboard Cache Refresh]
+    Scheduler["Spring Scheduled Jobs"] --> OutboxTable
+    Scheduler --> EODJob["End of Day Attendance Close Job"]
+    Scheduler --> OutlierJob["Outlier Detection Job"]
+
+    OutboxTable --> AsyncProcessor["Async Event Processors"]
+    AsyncProcessor --> Notification["Notification Module"]
+    AsyncProcessor --> OutlierModule["Outlier Module"]
+    AsyncProcessor --> DashboardCache["Dashboard Cache Refresh"]
 
     Notification --> PostGIS
-    OutlierMod --> PostGIS
-    EOD --> PostGIS
+    OutlierModule --> PostGIS
+    EODJob --> PostGIS
 ```
 
 ---
