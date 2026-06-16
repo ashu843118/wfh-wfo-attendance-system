@@ -10,6 +10,8 @@ All authenticated endpoints require:
 Authorization: Bearer <JWT>
 ```
 
+---
+
 ## Standard Response Wrappers
 
 ### `ApiResponse<T>`
@@ -25,6 +27,8 @@ Authorization: Bearer <JWT>
 
 Errors include `success: false`, a `message`, optional `errorCode`, and optional field-level validation details in `data`.
 
+Login failures return **401** with message `"Invalid email or password."` (not a generic 500).
+
 ### `PagedResponse<T>`
 
 Used inside `ApiResponse.data` for list endpoints:
@@ -39,6 +43,15 @@ Used inside `ApiResponse.data` for list endpoints:
   "last": false
 }
 ```
+
+### Pagination conventions
+
+| Parameter | Default | Max | Notes |
+|-----------|---------|-----|-------|
+| `page` | 0 | — | Zero-based page index |
+| `size` | 20 | 100 | Configured in `PaginationConfig` |
+
+Sort order varies by endpoint (documented per section below).
 
 ---
 
@@ -80,18 +93,20 @@ Core employee attendance APIs. Location payloads require `latitude`, `longitude`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/attendance/me/today` | Today's daily summary + session status for current employee |
-| GET | `/api/attendance/me?from=&to=&page=&size=` | Paginated daily attendance history |
-| POST | `/api/attendance/location-signal` | Process foreground location signal (auto WFO, WFH prompt, auto checkout) |
-| POST | `/api/attendance/check-in` | Manual check-in; classifies WFO/WFH from geofence |
+| GET | `/api/attendance/me/today` | Today's daily summary + session status |
+| GET | `/api/attendance/me?from=&to=&page=&size=` | Paginated daily attendance history (date **DESC**) |
+| GET | `/api/attendance/history?from=&to=&page=&size=` | Alias for `/me` history |
+| POST | `/api/attendance/location-signal` | Process location signal (auto WFO, WFH prompt, WFO auto-checkout) |
+| POST | `/api/attendance/check-in` | Manual check-in; backend classifies WFO/WFH from geofence |
 | POST | `/api/attendance/wfh-check-in` | Confirm WFH when outside assigned office |
 | POST | `/api/attendance/dismiss-wfh-prompt` | Dismiss WFH confirmation prompt for today |
 | POST | `/api/attendance/check-out` | Manual check-out; closes active session |
-| GET | `/api/attendance/me/events?from=&to=&page=&size=` | Paginated event audit history |
-| GET | `/api/attendance/me/events/{date}` | All events for a specific date (YYYY-MM-DD) |
-| POST | `/api/attendance/events/auto` | Low-level auto geofence enter/exit event (used internally by location flow) |
+| GET | `/api/attendance/me/events?from=&to=&page=&size=` | Paginated event audit history (event time **DESC**) |
+| GET | `/api/attendance/me/events/{date}` | Paginated events for a specific date (event time **ASC**) |
+| GET | `/api/attendance/me/sessions?date=&page=&size=` | Paginated sessions for a date |
+| POST | `/api/attendance/events/auto` | Low-level geofence enter/exit event (internal to location flow) |
 
-> **Note:** There is no `/api/attendance/today` alias. Use **`/api/attendance/me/today`**.
+> **Note:** There is no `/api/attendance/today` alias. Use **`GET /api/attendance/me/today`**.
 
 ### Location signal
 
@@ -99,8 +114,8 @@ Core employee attendance APIs. Location payloads require `latitude`, `longitude`
 
 ```json
 {
-  "latitude": 18.5912,
-  "longitude": 73.7389,
+  "latitude": 12.9262,
+  "longitude": 77.6811,
   "accuracy": 10,
   "timestamp": "2026-06-15T09:30:00"
 }
@@ -112,18 +127,21 @@ Core employee attendance APIs. Location payloads require `latitude`, `longitude`
 {
   "trackingState": "WFH_CONFIRMATION_REQUIRED",
   "insideOffice": false,
-  "assignedOfficeName": "Pune Tech Park",
+  "locationReliable": true,
+  "assignedOfficeName": "EY Bengaluru - Ecospace",
   "distanceFromOfficeMeters": 14703.05,
   "requiresWfhConfirmation": true,
   "checkInStableSecondsRemaining": null,
   "graceSecondsRemaining": null,
-  "userMessage": "You are inside office geofence. Auto check-in recorded as WFO.",
+  "userMessage": null,
   "todaySummary": { },
   "actionTaken": { }
 }
 ```
 
-`trackingState` values include: `WAITING_FOR_PERMISSION`, `LOCATION_PERMISSION_DENIED`, `AUTO_CHECKIN_PENDING`, `CHECKED_IN_WFO`, `CHECKED_IN_WFH`, `WFH_CONFIRMATION_REQUIRED`, `NOT_CHECKED_IN`, `AUTO_CHECKOUT_PENDING`, `CHECKED_OUT`, `MISSING_CHECKOUT`, `SYSTEM_CLOSED`.
+**`trackingState` values:**
+
+`WAITING_FOR_PERMISSION`, `LOCATION_PERMISSION_DENIED`, `DETECTING_LOCATION`, `AUTO_CHECKIN_PENDING`, `INSIDE_OFFICE`, `OUTSIDE_OFFICE`, `CHECKED_IN_WFO`, `CHECKED_IN_WFH`, `AUTO_CHECKOUT_MONITORING_ACTIVE`, `WFH_CONFIRMATION_REQUIRED`, `NOT_CHECKED_IN`, `AUTO_CHECKOUT_PENDING`, `AUTO_CHECKED_OUT`, `CHECKED_OUT`, `MISSING_CHECKOUT`, `SYSTEM_CLOSED`
 
 ### Manual check-in / check-out
 
@@ -132,8 +150,8 @@ Core employee attendance APIs. Location payloads require `latitude`, `longitude`
 ```json
 {
   "location": {
-    "latitude": 18.5912,
-    "longitude": 73.7389,
+    "latitude": 12.9262,
+    "longitude": 77.6811,
     "accuracy": 10,
     "timestamp": "2026-06-15T09:30:00"
   },
@@ -157,17 +175,18 @@ Core employee attendance APIs. Location payloads require `latitude`, `longitude`
 
 ### Today's attendance record (`AttendanceRecordResponse`)
 
-Key fields evaluators should understand:
-
 | Field | Meaning |
 |-------|---------|
-| `attendanceMode` | Final daily mode: **WFO** or **WFH** (no HYBRID in MVP) |
+| `attendanceMode` | Final daily mode: **WFO** or **WFH** (no HYBRID) |
+| `currentSessionMode` | **WFO** or **WFH** for the open session (null if no open session) |
 | `currentSessionStatus` | `NONE`, `OPEN`, or `CLOSED` |
 | `totalOfficeMinutes` | Sum of WFO session durations for the day |
-| `checkInTime` | Earliest check-in (`first_check_in_time`) |
-| `checkOutTime` | Latest checkout (`final_check_out_time`) |
+| `checkInTime` | Earliest check-in (`first_check_in_time`, UTC) |
+| `checkOutTime` | Latest checkout (`final_check_out_time`, UTC) |
 | `status` | e.g. `CHECKED_IN`, `CHECKED_OUT`, `MISSING_CHECKOUT` |
 | `processingStatus` | `CLASSIFICATION_PENDING` or `COMPLETED` |
+
+Times are stored in UTC; the frontend displays them in browser local timezone.
 
 ---
 
@@ -175,9 +194,11 @@ Key fields evaluators should understand:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/employee/dashboard-summary` | Personal KPIs, recent daily records, 30-day WFO/WFH trend |
+| GET | `/api/employee/dashboard-summary` | Personal KPIs, assigned office, recent daily records, 30-day WFO/WFH trend |
 
-Uses **`attendance_records`** daily summaries, not raw events.
+Uses **`attendance_records`** daily summaries.
+
+> Conceptual alias: this is the **employee dashboard** API (`/api/dashboard/employee` in product terms).
 
 ---
 
@@ -192,15 +213,20 @@ Uses **`attendance_records`** daily summaries, not raw events.
 
 WFO/WFH counts use **final daily `attendance_mode`** from `attendance_records`.
 
+> Conceptual alias: `/api/dashboard/manager` maps to `/api/manager/dashboard-summary`.
+
 ---
 
 ## Leadership Dashboard
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/leadership/dashboard` | Organization-level aggregated trends and KPIs |
+| GET | `/api/leadership/dashboard?date=` | Organization-level aggregated trends and KPIs |
+| GET | `/api/leadership/team-summary?date=&page=&size=` | Paginated team performance summary |
 
 Uses aggregated **`attendance_records`** final daily modes.
+
+> Conceptual alias: `/api/dashboard/leadership` maps to `/api/leadership/dashboard`.
 
 ---
 
@@ -213,7 +239,7 @@ Base path: `/api/admin`
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/admin/employees?page=&size=&search=&role=&teamId=&active=` | Paginated employee list |
-| POST | `/api/admin/employees` | Create employee (includes `assignedOfficeLocationId`, temporary password) |
+| POST | `/api/admin/employees` | Create employee (includes `assignedOfficeLocationId`) |
 | PUT | `/api/admin/employees/{id}` | Update employee (including assigned office) |
 | PATCH | `/api/admin/employees/{id}/status` | Activate/deactivate |
 | GET | `/api/admin/managers` | Active managers for dropdown |
@@ -225,7 +251,9 @@ Base path: `/api/admin`
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/admin/offices` | List offices (alias) |
 | GET | `/api/admin/office-locations` | List offices |
+| GET | `/api/admin/office-locations/active` | Active offices only |
 | GET | `/api/admin/office-locations/{id}` | Get office |
 | POST | `/api/admin/office-locations` | Create office |
 | PUT | `/api/admin/office-locations/{id}` | Update office |
@@ -259,9 +287,15 @@ Updates invalidate Redis `office:employee:{id}` cache entries for affected emplo
 
 ---
 
-## Outliers (via manager dashboard)
+## Outliers
 
-Outlier types detected asynchronously:
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/outliers?page=&size=&status=&severity=&type=` | Paginated outlier alerts with optional filters |
+
+Manager team outliers also available at `GET /api/manager/outliers`.
+
+### Outlier types
 
 | Type | Typical trigger |
 |------|-----------------|
@@ -281,14 +315,25 @@ Outlier types detected asynchronously:
 
 ---
 
-## Attendance behavior summary (for API consumers)
+## Attendance Behavior Summary (for API Consumers)
 
-1. **Auto WFO** — `POST /location-signal` while inside assigned office → creates `AUTO_CHECK_IN` session after stability period.
-2. **WFH prompt** — `POST /location-signal` while outside → `requiresWfhConfirmation: true`; confirm via `POST /wfh-check-in`.
-3. **Manual check-in** — `POST /check-in` classifies WFO/WFH from geofence.
-4. **Auto checkout** — only for sessions with `autoCheckoutEligible=true` (auto WFO); triggered via continued outside `location-signal`s after grace period.
+1. **Before check-in** — `POST /location-signal` with one location read:
+   - Inside assigned office → auto WFO after stability period (~15s demo).
+   - Outside → `requiresWfhConfirmation: true`; confirm via `POST /wfh-check-in`.
+2. **Manual check-in** — `POST /check-in` classifies WFO (inside) or WFH (outside).
+3. **WFO auto-checkout** — `POST /location-signal` from WFO watcher while app open; outside for grace period (~60s demo) triggers auto checkout. Applies to **all WFO sessions** (auto and manual).
+4. **WFH sessions** — no continuous location signals; manual checkout or EOD close.
 5. **Manual checkout** — `POST /check-out` closes any open session.
 6. **Same-day re-check-in** — allowed after checkout when `currentSessionStatus` is not `OPEN`.
-7. **Final daily mode** — read from `GET /me/today` or history; based on `totalOfficeMinutes` vs `requiredWfoMinutes`.
+7. **Final daily mode** — WFO if `totalOfficeMinutes >= requiredWfoMinutes`; else WFH. No HYBRID.
+8. **EOD close** — scheduler closes open sessions at 23:59:59; creates `SYSTEM_DAY_CLOSE` event.
 
-See [architecture.md](architecture.md) and [assumptions.md](assumptions.md) for full rules.
+See [attendance-flow.md](attendance-flow.md) and [architecture.md](architecture.md) for full rules.
+
+---
+
+## Related Documentation
+
+- [attendance-flow.md](attendance-flow.md) — check-in/check-out flow
+- [architecture.md](architecture.md) — outbox, Redis, schedulers
+- [local-setup.md](local-setup.md) — testing APIs locally

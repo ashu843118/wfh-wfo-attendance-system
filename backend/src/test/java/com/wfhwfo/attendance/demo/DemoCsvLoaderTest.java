@@ -11,7 +11,7 @@ class DemoCsvLoaderTest {
     @Test
     void loadsExpectedDemoReferenceData() {
         assertThat(loader.loadTeams()).hasSize(5);
-        assertThat(loader.loadOffices()).hasSize(5);
+        assertThat(loader.loadOffices()).hasSize(6);
         assertThat(loader.loadPolicies()).hasSize(5);
         assertThat(loader.loadEmployees()).hasSize(100);
         assertThat(loader.loadEmployees()).extracting(DemoCsvLoader.EmployeeRow::email)

@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -14,8 +15,22 @@ import java.util.List;
 public class EmployeeDashboardResponse {
 
     private EmployeeKpis kpis;
+    private AssignedOfficeInfo assignedOffice;
     private List<TrendPoint> wfoWfhTrend;
     private List<RecentAttendanceRow> recentAttendance;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AssignedOfficeInfo {
+        private Long id;
+        private String officeName;
+        private String address;
+        private Double latitude;
+        private Double longitude;
+        private Integer radiusMeters;
+    }
 
     @Data
     @Builder
@@ -49,7 +64,7 @@ public class EmployeeDashboardResponse {
         private String status;
         private String mode;
         private Boolean late;
-        private String checkInTime;
-        private String checkOutTime;
+        private LocalDateTime checkInTime;
+        private LocalDateTime checkOutTime;
     }
 }

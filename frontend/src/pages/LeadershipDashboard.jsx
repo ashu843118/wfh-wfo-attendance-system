@@ -1,33 +1,48 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { RefreshCw, Users, UserCheck, Building2, Home, TrendingUp } from 'lucide-react'
 import Topbar from '../components/layout/Topbar'
 import KpiCard from '../components/cards/KpiCard'
 import LineChartCard from '../components/charts/LineChartCard'
 import DataTable from '../components/tables/DataTable'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import PaginationBar from '../components/common/PaginationBar'
 import { useToast } from '../components/common/Toast'
 import { useAuth } from '../auth/AuthContext'
 import usePolling from '../hooks/usePolling'
-import { getLeadershipDashboard } from '../api/dashboardApi'
+import { getLeadershipDashboard, getLeadershipTeamSummary } from '../api/dashboardApi'
 import { formatLastUpdated } from '../utils/format'
 import './DashboardPages.css'
 
 export default function LeadershipDashboard() {
   const toast = useToast()
   const { isAuthenticated } = useAuth()
+  const [teamPage, setTeamPage] = useState(0)
+  const [teamSize, setTeamSize] = useState(20)
 
   const fetchDashboard = useCallback(() => getLeadershipDashboard(), [])
+
+  const fetchTeamSummary = useCallback(
+    () => getLeadershipTeamSummary({ page: teamPage, size: teamSize }),
+    [teamPage, teamSize]
+  )
 
   const { data: dashboard, loading, lastUpdated, refresh } = usePolling(fetchDashboard, 60000, {
     enabled: isAuthenticated,
   })
 
+  const {
+    data: teamSummary,
+    loading: teamLoading,
+    refresh: refreshTeamSummary,
+  } = usePolling(fetchTeamSummary, 60000, { enabled: isAuthenticated })
+
   const handleRefresh = async () => {
-    await refresh()
+    await Promise.all([refresh(), refreshTeamSummary()])
     toast.info('Dashboard refreshed')
   }
 
   const kpis = dashboard?.kpis
+  const teamRows = teamSummary?.content || []
 
   const teamColumns = [
     { key: 'teamName', label: 'Team' },
@@ -79,12 +94,30 @@ export default function LeadershipDashboard() {
           <div className="card-header">
             <h3 className="card-title">Team Performance</h3>
           </div>
-          <DataTable
-            columns={teamColumns}
-            data={dashboard?.teamPerformance || []}
-            keyField="teamId"
-            emptyMessage="No team performance data available"
-          />
+          {teamLoading && !teamSummary ? (
+            <LoadingSpinner message="Loading team performance..." />
+          ) : (
+            <>
+              <DataTable
+                columns={teamColumns}
+                data={teamRows}
+                keyField="teamId"
+                emptyMessage="No team performance data available"
+              />
+              <PaginationBar
+                page={teamPage}
+                size={teamSize}
+                totalElements={teamSummary?.totalElements ?? 0}
+                totalPages={teamSummary?.totalPages ?? 0}
+                loading={teamLoading}
+                onPageChange={setTeamPage}
+                onSizeChange={(nextSize) => {
+                  setTeamSize(nextSize)
+                  setTeamPage(0)
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
     </>

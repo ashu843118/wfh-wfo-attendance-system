@@ -40,12 +40,26 @@ export async function getTodayAttendance() {
 }
 
 export async function getAttendanceHistory(params = {}) {
-  const response = await apiClient.get('/api/attendance/me', { params })
+  const response = await apiClient.get('/api/attendance/history', { params })
   return unwrapResponse(response)
 }
 
 export async function getAttendanceEvents(params = {}) {
-  const response = await apiClient.get('/api/attendance/me/events', { params })
+  const response = await apiClient.get('/api/attendance/events', { params })
+  return unwrapResponse(response)
+}
+
+export async function getAttendanceEventsForDate(date, params = {}) {
+  const response = await apiClient.get('/api/attendance/events', {
+    params: { date, ...params },
+  })
+  return unwrapResponse(response)
+}
+
+export async function getAttendanceSessionsForDate(date, params = {}) {
+  const response = await apiClient.get('/api/attendance/sessions', {
+    params: { date, ...params },
+  })
   return unwrapResponse(response)
 }
 

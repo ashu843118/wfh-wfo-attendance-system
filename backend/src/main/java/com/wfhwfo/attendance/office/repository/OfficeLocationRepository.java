@@ -1,6 +1,8 @@
 package com.wfhwfo.attendance.office.repository;
 
 import com.wfhwfo.attendance.office.entity.OfficeLocation;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -10,7 +12,11 @@ import java.util.Optional;
 
 public interface OfficeLocationRepository extends JpaRepository<OfficeLocation, Long> {
 
+    Page<OfficeLocation> findAllByOrderByOfficeNameAsc(Pageable pageable);
+
     List<OfficeLocation> findByActiveTrue();
+
+    Optional<OfficeLocation> findFirstByOfficeName(String officeName);
 
     @Query(value = """
             SELECT o.id AS officeId,

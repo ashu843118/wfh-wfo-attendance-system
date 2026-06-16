@@ -19,7 +19,7 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
 
     Optional<AttendanceRecord> findByEmployeeIdAndAttendanceDate(Long employeeId, LocalDate attendanceDate);
 
-    Page<AttendanceRecord> findByEmployeeIdAndAttendanceDateBetween(
+    Page<AttendanceRecord> findByEmployeeIdAndAttendanceDateBetweenOrderByAttendanceDateDescFirstCheckInTimeDesc(
             Long employeeId, LocalDate fromDate, LocalDate toDate, Pageable pageable);
 
     @Query("""
@@ -230,6 +230,45 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
             ORDER BY e.name
             """)
     List<Object[]> findTeamDashboardRows(@Param("managerId") Long managerId, @Param("date") LocalDate date);
+
+    @Query(value = """
+            SELECT e.id, e.name, ar.status, ar.attendanceMode, ar.late,
+                   ar.firstCheckInTime, ar.finalCheckOutTime, ar.processingStatus
+            FROM Employee e
+            LEFT JOIN AttendanceRecord ar ON ar.employeeId = e.id AND ar.attendanceDate = :date
+            WHERE e.managerId = :managerId AND e.active = true
+            ORDER BY e.name
+            """,
+            countQuery = """
+            SELECT COUNT(e) FROM Employee e
+            WHERE e.managerId = :managerId AND e.active = true
+            """)
+    Page<Object[]> findTeamDashboardRowsPage(
+            @Param("managerId") Long managerId,
+            @Param("date") LocalDate date,
+            Pageable pageable);
+
+    @Query(value = """
+            SELECT e.teamId, t.name,
+                   SUM(CASE WHEN ar.status IN ('CHECKED_IN','CHECKED_OUT') THEN 1 ELSE 0 END) * 100.0
+                       / NULLIF(COUNT(DISTINCT e.id) * :workingDays, 0)
+            FROM Employee e
+            JOIN Team t ON t.id = e.teamId
+            LEFT JOIN AttendanceRecord ar ON ar.employeeId = e.id
+              AND ar.attendanceDate BETWEEN :from AND :to
+            WHERE e.active = true
+            GROUP BY e.teamId, t.name
+            ORDER BY t.name
+            """,
+            countQuery = """
+            SELECT COUNT(DISTINCT e.teamId) FROM Employee e
+            WHERE e.active = true AND e.teamId IS NOT NULL
+            """)
+    Page<Object[]> teamAttendancePercentagesWithNamesPage(
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("workingDays") long workingDays,
+            Pageable pageable);
 
     @Query("""
             SELECT COUNT(ar) FROM AttendanceRecord ar

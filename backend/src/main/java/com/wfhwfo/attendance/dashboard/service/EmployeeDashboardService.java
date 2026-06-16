@@ -6,6 +6,8 @@ import com.wfhwfo.attendance.common.enums.AttendanceMode;
 import com.wfhwfo.attendance.common.enums.ProcessingStatus;
 import com.wfhwfo.attendance.common.security.SecurityUtils;
 import com.wfhwfo.attendance.dashboard.dto.EmployeeDashboardResponse;
+import com.wfhwfo.attendance.office.dto.EmployeeAssignedOfficeDto;
+import com.wfhwfo.attendance.office.service.EmployeeOfficeCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -23,10 +25,10 @@ import java.util.Map;
 public class EmployeeDashboardService {
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
     private static final int TREND_DAYS = 30;
 
     private final AttendanceRecordRepository attendanceRecordRepository;
+    private final EmployeeOfficeCacheService employeeOfficeCacheService;
 
     @Transactional(readOnly = true)
     public EmployeeDashboardResponse getDashboard() {
@@ -56,16 +58,34 @@ public class EmployeeDashboardService {
         List<EmployeeDashboardResponse.TrendPoint> trend = buildTrend(employeeId, trendStart, today);
 
         List<EmployeeDashboardResponse.RecentAttendanceRow> recent = attendanceRecordRepository
-                .findByEmployeeIdAndAttendanceDateBetween(employeeId, monthStart, today, PageRequest.of(0, 10))
+                .findByEmployeeIdAndAttendanceDateBetweenOrderByAttendanceDateDescFirstCheckInTimeDesc(
+                        employeeId, monthStart, today, PageRequest.of(0, 10))
                 .getContent()
                 .stream()
                 .map(this::toRecentRow)
                 .toList();
 
+        EmployeeDashboardResponse.AssignedOfficeInfo assignedOffice =
+                employeeOfficeCacheService.findAssignedOffice(employeeId)
+                        .map(this::toAssignedOfficeInfo)
+                        .orElse(null);
+
         return EmployeeDashboardResponse.builder()
                 .kpis(kpis)
+                .assignedOffice(assignedOffice)
                 .wfoWfhTrend(trend)
                 .recentAttendance(recent)
+                .build();
+    }
+
+    private EmployeeDashboardResponse.AssignedOfficeInfo toAssignedOfficeInfo(EmployeeAssignedOfficeDto office) {
+        return EmployeeDashboardResponse.AssignedOfficeInfo.builder()
+                .id(office.getOfficeLocationId())
+                .officeName(office.getOfficeName())
+                .address(office.getAddress())
+                .latitude(office.getLatitude())
+                .longitude(office.getLongitude())
+                .radiusMeters(office.getRadiusMeters())
                 .build();
     }
 
@@ -105,8 +125,8 @@ public class EmployeeDashboardService {
                 .status(record.getStatus() != null ? record.getStatus().name() : null)
                 .mode(record.getAttendanceMode() != null ? record.getAttendanceMode().name() : null)
                 .late(record.getLate())
-                .checkInTime(record.getFirstCheckInTime() != null ? record.getFirstCheckInTime().format(TIME_FORMAT) : null)
-                .checkOutTime(record.getFinalCheckOutTime() != null ? record.getFinalCheckOutTime().format(TIME_FORMAT) : null)
+                .checkInTime(record.getFirstCheckInTime())
+                .checkOutTime(record.getFinalCheckOutTime())
                 .build();
     }
 }

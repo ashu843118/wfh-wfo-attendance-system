@@ -17,9 +17,9 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -47,14 +47,12 @@ public class AdminEmployeeController {
     @Operation(summary = "List employees with filters and pagination")
     @OpenApiResponseDocs.StandardApiResponses
     public ResponseEntity<ApiResponse<PagedResponse<EmployeeAdminResponse>>> listEmployees(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Role role,
             @RequestParam(required = false) Long teamId,
-            @RequestParam(required = false) Boolean active) {
+            @RequestParam(required = false) Boolean active,
+            @PageableDefault(size = 20, sort = "name", direction = Sort.Direction.ASC) Pageable pageable) {
 
-        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
         PagedResponse<EmployeeAdminResponse> result = employeeAdminService.listEmployees(
                 search, role, teamId, active, pageable);
         return ResponseEntity.ok(ApiResponse.success("Employees fetched successfully", result));

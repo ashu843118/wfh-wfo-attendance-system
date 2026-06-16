@@ -1,6 +1,8 @@
 package com.wfhwfo.attendance.dashboard.controller;
 
 import com.wfhwfo.attendance.common.dto.ApiResponse;
+import com.wfhwfo.attendance.common.dto.PagedResponse;
+import com.wfhwfo.attendance.config.OpenApiResponseDocs;
 import com.wfhwfo.attendance.office.dto.OfficeLocationRequest;
 import com.wfhwfo.attendance.office.dto.OfficeLocationResponse;
 import com.wfhwfo.attendance.office.service.OfficeLocationService;
@@ -12,6 +14,9 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,10 +39,17 @@ public class AdminController {
     private final OfficeLocationService officeLocationService;
     private final AttendancePolicyService attendancePolicyService;
 
-    @GetMapping("/office-locations")
-    @Operation(summary = "List all office locations")
-    public ResponseEntity<ApiResponse<List<OfficeLocationResponse>>> listOffices() {
-        return ResponseEntity.ok(ApiResponse.success("Office locations fetched", officeLocationService.getAll()));
+    @GetMapping({"/office-locations", "/offices"})
+    @Operation(summary = "List office locations with pagination")
+    public ResponseEntity<ApiResponse<PagedResponse<OfficeLocationResponse>>> listOffices(
+            @PageableDefault(size = 20, sort = "officeName", direction = Sort.Direction.ASC) Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.success("Office locations fetched", officeLocationService.list(pageable)));
+    }
+
+    @GetMapping("/office-locations/active")
+    @Operation(summary = "List all active office locations for dropdowns")
+    public ResponseEntity<ApiResponse<List<OfficeLocationResponse>>> listActiveOffices() {
+        return ResponseEntity.ok(ApiResponse.success("Active office locations fetched", officeLocationService.getActiveOffices()));
     }
 
     @GetMapping("/office-locations/{id}")
@@ -71,9 +83,10 @@ public class AdminController {
     }
 
     @GetMapping("/policies")
-    @Operation(summary = "List all attendance policies")
-    public ResponseEntity<ApiResponse<List<AttendancePolicyResponse>>> listPolicies() {
-        return ResponseEntity.ok(ApiResponse.success("Policies fetched", attendancePolicyService.getAll()));
+    @Operation(summary = "List attendance policies with pagination")
+    public ResponseEntity<ApiResponse<PagedResponse<AttendancePolicyResponse>>> listPolicies(
+            @PageableDefault(size = 20, sort = "teamId", direction = Sort.Direction.ASC) Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.success("Policies fetched", attendancePolicyService.list(pageable)));
     }
 
     @GetMapping("/policies/{id}")

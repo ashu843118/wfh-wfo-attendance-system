@@ -10,6 +10,7 @@ import com.wfhwfo.attendance.attendance.dto.AutoTrackingSessionState;
 import com.wfhwfo.attendance.attendance.dto.LocationPayload;
 import com.wfhwfo.attendance.attendance.dto.LocationSignalResponse;
 import com.wfhwfo.attendance.attendance.entity.AttendanceRecord;
+import com.wfhwfo.attendance.attendance.entity.AttendanceSession;
 import com.wfhwfo.attendance.attendance.repository.AttendanceRecordRepository;
 import com.wfhwfo.attendance.common.adapter.CacheAdapter;
 import com.wfhwfo.attendance.common.enums.AttendanceEventType;
@@ -17,6 +18,7 @@ import com.wfhwfo.attendance.common.enums.AttendanceMode;
 import com.wfhwfo.attendance.common.enums.AttendanceStatus;
 import com.wfhwfo.attendance.common.enums.AttendanceTriggerMode;
 import com.wfhwfo.attendance.common.enums.AutoTrackingStateLabel;
+import com.wfhwfo.attendance.common.enums.CurrentSessionStatus;
 import com.wfhwfo.attendance.common.enums.ProcessingStatus;
 import com.wfhwfo.attendance.common.security.UserPrincipal;
 import com.wfhwfo.attendance.geofence.dto.GeoFenceMatchResult;
@@ -43,6 +45,7 @@ public class LocationSignalService {
     private final EmployeeOfficeCacheService employeeOfficeCacheService;
     private final AssignedOfficeGeofenceService assignedOfficeGeofenceService;
     private final AttendanceRecordRepository attendanceRecordRepository;
+    private final AttendanceSessionService attendanceSessionService;
     private final AttendanceWriteService attendanceWriteService;
     private final CacheAdapter cacheAdapter;
     private final ObjectMapper objectMapper;
@@ -57,28 +60,31 @@ public class LocationSignalService {
         GeoFenceMatchResult geofenceMatch = assignedOfficeGeofenceService.evaluate(
                 assignedOffice, location.getLatitude(), location.getLongitude());
         boolean insideOffice = geofenceMatch.isWithinFence();
+        boolean locationReliable = isLocationReliable(location, signalTime);
 
         AutoTrackingSessionState session = loadSession(user.getEmployeeId(), today);
         AttendanceActionResponse actionTaken = null;
         String userMessage = null;
 
-        if (insideOffice) {
-            if (!Boolean.TRUE.equals(session.getWasInside())) {
-                attendanceWriteService.recordAutoEvent(
-                        user, today, buildAutoGeofenceRequest(location, AttendanceEventType.ENTERED_GEOFENCE));
+        if (locationReliable) {
+            if (insideOffice) {
+                if (!Boolean.TRUE.equals(session.getWasInside())) {
+                    attendanceWriteService.recordAutoEvent(
+                            user, today, buildAutoGeofenceRequest(location, AttendanceEventType.ENTERED_GEOFENCE));
+                }
+                session.setInsideSince(session.getInsideSince() != null ? session.getInsideSince() : signalTime);
+                session.setOutsideSince(null);
+            } else {
+                if (Boolean.TRUE.equals(session.getWasInside())) {
+                    attendanceWriteService.recordAutoEvent(
+                            user, today, buildAutoGeofenceRequest(location, AttendanceEventType.EXITED_GEOFENCE));
+                }
+                session.setOutsideSince(session.getOutsideSince() != null ? session.getOutsideSince() : signalTime);
+                session.setInsideSince(null);
             }
-            session.setInsideSince(session.getInsideSince() != null ? session.getInsideSince() : signalTime);
-            session.setOutsideSince(null);
-        } else {
-            if (Boolean.TRUE.equals(session.getWasInside())) {
-                attendanceWriteService.recordAutoEvent(
-                        user, today, buildAutoGeofenceRequest(location, AttendanceEventType.EXITED_GEOFENCE));
-            }
-            session.setOutsideSince(session.getOutsideSince() != null ? session.getOutsideSince() : signalTime);
-            session.setInsideSince(null);
+            session.setWasInside(insideOffice);
+            saveSession(user.getEmployeeId(), today, session);
         }
-        session.setWasInside(insideOffice);
-        saveSession(user.getEmployeeId(), today, session);
 
         AttendanceRecord summary = attendanceRecordRepository
                 .findByEmployeeIdAndAttendanceDate(user.getEmployeeId(), today)
@@ -88,7 +94,7 @@ public class LocationSignalService {
         boolean dayClosed = summary != null && isDayClosed(summary.getStatus());
 
         Long checkInStableRemaining = null;
-        if (!hasOpenSession && !dayClosed && insideOffice && session.getInsideSince() != null) {
+        if (locationReliable && !hasOpenSession && !dayClosed && insideOffice && session.getInsideSince() != null) {
             long insideSeconds = Duration.between(session.getInsideSince(), signalTime).getSeconds();
             if (insideSeconds >= autoAttendanceProperties.getCheckInStableSeconds()) {
                 actionTaken = mergeAction(actionTaken, attendanceWriteService.recordTrackedEvent(
@@ -106,7 +112,7 @@ public class LocationSignalService {
             }
         }
 
-        if (hasOpenSession && !dayClosed && attendanceWriteService.isAutoCheckoutEligible(user.getEmployeeId(), today)
+        if (locationReliable && hasOpenSession && !dayClosed && attendanceWriteService.isAutoCheckoutEligible(user.getEmployeeId(), today)
                 && !insideOffice && session.getOutsideSince() != null) {
             long outsideSeconds = Duration.between(session.getOutsideSince(), signalTime).getSeconds();
             if (outsideSeconds >= autoAttendanceProperties.getCheckoutGraceSeconds()) {
@@ -139,11 +145,12 @@ public class LocationSignalService {
 
         AutoTrackingStateLabel trackingState = resolveTrackingState(
                 summary, insideOffice, graceRemaining, checkInStableRemaining,
-                requiresWfhConfirmation, session.getWfhPromptDismissed());
+                requiresWfhConfirmation, session.getWfhPromptDismissed(), hasOpenSession);
 
         return LocationSignalResponse.builder()
                 .trackingState(trackingState)
                 .insideOffice(insideOffice)
+                .locationReliable(locationReliable)
                 .assignedOfficeName(assignedOffice.getOfficeName())
                 .matchedOfficeName(geofenceMatch.isWithinFence() ? assignedOffice.getOfficeName() : null)
                 .distanceFromOfficeMeters(geofenceMatch.getDistanceMeters())
@@ -178,15 +185,31 @@ public class LocationSignalService {
             Long graceRemaining,
             Long checkInStableRemaining,
             boolean requiresWfhConfirmation,
-            Boolean wfhPromptDismissed) {
+            Boolean wfhPromptDismissed,
+            boolean hasOpenSession) {
         if (summary != null && summary.getStatus() == AttendanceStatus.SYSTEM_CLOSED) {
             return AutoTrackingStateLabel.SYSTEM_CLOSED;
         }
         if (summary != null && summary.getStatus() == AttendanceStatus.MISSING_CHECKOUT) {
             return AutoTrackingStateLabel.MISSING_CHECKOUT;
         }
-        if (summary != null && summary.getStatus() == AttendanceStatus.CHECKED_OUT && !insideOffice) {
+        if (summary != null && summary.getStatus() == AttendanceStatus.CHECKED_OUT && !hasOpenSession) {
             return AutoTrackingStateLabel.CHECKED_OUT;
+        }
+        if (hasOpenSession && summary != null) {
+            AttendanceMode openSessionMode = attendanceSessionService.findOpenSession(
+                            summary.getEmployeeId(), summary.getAttendanceDate())
+                    .map(AttendanceSession::getSessionMode)
+                    .orElse(summary.getAttendanceMode());
+            if (openSessionMode == AttendanceMode.WFH) {
+                return AutoTrackingStateLabel.CHECKED_IN_WFH;
+            }
+            if (openSessionMode == AttendanceMode.WFO) {
+                if (!insideOffice && graceRemaining != null && graceRemaining > 0) {
+                    return AutoTrackingStateLabel.AUTO_CHECKOUT_PENDING;
+                }
+                return AutoTrackingStateLabel.AUTO_CHECKOUT_MONITORING_ACTIVE;
+            }
         }
         if (summary != null && summary.getFirstCheckInTime() != null
                 && summary.getStatus() == AttendanceStatus.CHECKED_IN) {
@@ -216,6 +239,17 @@ public class LocationSignalService {
             return AutoTrackingStateLabel.INSIDE_OFFICE;
         }
         return AutoTrackingStateLabel.NOT_CHECKED_IN;
+    }
+
+    private boolean isLocationReliable(LocationPayload location, LocalDateTime signalTime) {
+        if (location.getAccuracy() == null
+                || location.getAccuracy() > autoAttendanceProperties.getMaxAccuracyMeters()) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime reference = location.getTimestamp() != null ? location.getTimestamp() : signalTime;
+        long ageSeconds = Math.abs(Duration.between(reference, now).getSeconds());
+        return ageSeconds <= autoAttendanceProperties.getMaxLocationAgeSeconds();
     }
 
     private AttendanceActionResponse mergeAction(
@@ -271,12 +305,20 @@ public class LocationSignalService {
     }
 
     private AttendanceRecordResponse toRecordResponse(AttendanceRecord record) {
+        AttendanceMode currentSessionMode = null;
+        if (record.getCurrentSessionStatus() == CurrentSessionStatus.OPEN) {
+            currentSessionMode = attendanceSessionService.findOpenSession(
+                            record.getEmployeeId(), record.getAttendanceDate())
+                    .map(AttendanceSession::getSessionMode)
+                    .orElse(null);
+        }
         return AttendanceRecordResponse.builder()
                 .id(record.getId())
                 .attendanceDate(record.getAttendanceDate())
                 .checkInTime(record.getFirstCheckInTime())
                 .checkOutTime(record.getFinalCheckOutTime())
                 .attendanceMode(record.getAttendanceMode())
+                .currentSessionMode(currentSessionMode)
                 .status(record.getStatus())
                 .processingStatus(record.getProcessingStatus())
                 .late(record.getLate())

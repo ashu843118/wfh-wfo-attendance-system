@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react'
 import Topbar from '../components/layout/Topbar'
 import DataTable from '../components/tables/DataTable'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import PaginationBar from '../components/common/PaginationBar'
 import { useToast } from '../components/common/Toast'
 import {
   getOfficeLocations,
@@ -25,22 +26,29 @@ const EMPTY_FORM = {
 export default function OfficeLocationsPage() {
   const toast = useToast()
   const [locations, setLocations] = useState([])
+  const [pagination, setPagination] = useState({ page: 0, size: 20, totalPages: 0, totalElements: 0 })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
 
-  const loadLocations = useCallback(async () => {
+  const loadLocations = useCallback(async (page = pagination.page, size = pagination.size) => {
     setLoading(true)
     try {
-      const data = await getOfficeLocations()
-      setLocations(data || [])
+      const data = await getOfficeLocations({ page, size })
+      setLocations(data?.content || [])
+      setPagination({
+        page: data?.page ?? page,
+        size: data?.size ?? size,
+        totalPages: data?.totalPages ?? 0,
+        totalElements: data?.totalElements ?? 0,
+      })
     } catch (err) {
       toast.error(getApiErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [pagination.page, pagination.size, toast])
 
   useEffect(() => {
     loadLocations()
@@ -201,7 +209,18 @@ export default function OfficeLocationsPage() {
           {loading ? (
             <LoadingSpinner message="Loading locations..." />
           ) : (
-            <DataTable columns={columns} data={locations} keyField="id" emptyMessage="No office locations configured" />
+            <>
+              <DataTable columns={columns} data={locations} keyField="id" emptyMessage="No office locations configured" />
+              <PaginationBar
+                page={pagination.page}
+                size={pagination.size}
+                totalElements={pagination.totalElements}
+                totalPages={pagination.totalPages}
+                loading={loading}
+                onPageChange={(nextPage) => loadLocations(nextPage, pagination.size)}
+                onSizeChange={(nextSize) => loadLocations(0, nextSize)}
+              />
+            </>
           )}
         </div>
       </div>

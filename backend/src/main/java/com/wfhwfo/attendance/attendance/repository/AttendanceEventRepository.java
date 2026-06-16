@@ -14,6 +14,9 @@ public interface AttendanceEventRepository extends JpaRepository<AttendanceEvent
     List<AttendanceEvent> findByEmployeeIdAndAttendanceDateOrderByEventTimeAscIdAsc(
             Long employeeId, LocalDate attendanceDate);
 
+    Page<AttendanceEvent> findByEmployeeIdAndAttendanceDateOrderByEventTimeAscIdAsc(
+            Long employeeId, LocalDate attendanceDate, Pageable pageable);
+
     Page<AttendanceEvent> findByEmployeeIdAndAttendanceDateBetweenOrderByEventTimeDescIdDesc(
             Long employeeId, LocalDate from, LocalDate to, Pageable pageable);
 

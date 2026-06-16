@@ -1,6 +1,11 @@
 spring:
   application:
     name: attendance
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+        default-page-size: 20
   jpa:
     hibernate:
       ddl-auto: validate

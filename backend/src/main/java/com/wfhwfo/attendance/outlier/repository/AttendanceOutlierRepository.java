@@ -41,4 +41,28 @@ public interface AttendanceOutlierRepository extends JpaRepository<AttendanceOut
     long countByManagerIdAndStatus(
             @Param("managerId") Long managerId,
             @Param("status") OutlierStatus status);
+
+    @Query(value = """
+            SELECT o FROM AttendanceOutlier o
+            JOIN Employee e ON e.id = o.employeeId
+            WHERE (:status IS NULL OR o.status = :status)
+              AND (:severity IS NULL OR o.severity = :severity)
+              AND (:type IS NULL OR o.outlierType = :type)
+              AND (:managerId IS NULL OR e.managerId = :managerId)
+            ORDER BY o.detectedAt DESC
+            """,
+            countQuery = """
+            SELECT COUNT(o) FROM AttendanceOutlier o
+            JOIN Employee e ON e.id = o.employeeId
+            WHERE (:status IS NULL OR o.status = :status)
+              AND (:severity IS NULL OR o.severity = :severity)
+              AND (:type IS NULL OR o.outlierType = :type)
+              AND (:managerId IS NULL OR e.managerId = :managerId)
+            """)
+    Page<AttendanceOutlier> searchOutliers(
+            @Param("status") OutlierStatus status,
+            @Param("severity") com.wfhwfo.attendance.common.enums.Severity severity,
+            @Param("type") OutlierType type,
+            @Param("managerId") Long managerId,
+            Pageable pageable);
 }

@@ -3,6 +3,7 @@ import { Plus, Pencil, RefreshCw, UserCheck, UserX } from 'lucide-react'
 import Topbar from '../components/layout/Topbar'
 import DataTable from '../components/tables/DataTable'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import PaginationBar from '../components/common/PaginationBar'
 import { useToast } from '../components/common/Toast'
 import {
   getEmployees,
@@ -11,7 +12,7 @@ import {
   updateEmployeeStatus,
   getManagers,
   getTeams,
-  getOfficeLocations,
+  getActiveOfficeLocations,
 } from '../api/adminApi'
 import { getApiErrorMessage } from '../utils/format'
 import './DashboardPages.css'
@@ -47,6 +48,7 @@ export default function EmployeesPage() {
     teamId: '',
     active: '',
     page: 0,
+    size: 20,
   })
 
   const loadDropdowns = useCallback(async () => {
@@ -54,7 +56,7 @@ export default function EmployeesPage() {
       const [managerList, teamList, officeList] = await Promise.all([
         getManagers(),
         getTeams(),
-        getOfficeLocations(),
+        getActiveOfficeLocations(),
       ])
       setManagers(managerList || [])
       setTeams(teamList || [])
@@ -71,7 +73,7 @@ export default function EmployeesPage() {
         filters.active === '' ? undefined : filters.active === 'true'
       const data = await getEmployees({
         page: filters.page,
-        size: pagination.size,
+        size: filters.size,
         search: filters.search || undefined,
         role: filters.role || undefined,
         teamId: filters.teamId ? Number(filters.teamId) : undefined,
@@ -81,6 +83,7 @@ export default function EmployeesPage() {
       setPagination((prev) => ({
         ...prev,
         page: data?.page ?? 0,
+        size: data?.size ?? filters.size,
         totalPages: data?.totalPages ?? 0,
         totalElements: data?.totalElements ?? 0,
       }))
@@ -89,7 +92,7 @@ export default function EmployeesPage() {
     } finally {
       setLoading(false)
     }
-  }, [filters, pagination.size, toast])
+  }, [filters, toast])
 
   useEffect(() => {
     loadDropdowns()
@@ -417,30 +420,15 @@ export default function EmployeesPage() {
           ) : (
             <>
               <DataTable columns={columns} data={employees} emptyMessage="No employees found" />
-              <div className="pagination-bar">
-                <span>
-                  Page {pagination.page + 1} of {Math.max(pagination.totalPages, 1)}
-                  {' '}({pagination.totalElements} total)
-                </span>
-                <div className="pagination-actions">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={pagination.page <= 0}
-                    onClick={() => setFilters((prev) => ({ ...prev, page: prev.page - 1 }))}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={pagination.page >= pagination.totalPages - 1}
-                    onClick={() => setFilters((prev) => ({ ...prev, page: prev.page + 1 }))}
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
+              <PaginationBar
+                page={pagination.page}
+                size={filters.size}
+                totalElements={pagination.totalElements}
+                totalPages={pagination.totalPages}
+                loading={loading}
+                onPageChange={(nextPage) => setFilters((prev) => ({ ...prev, page: nextPage }))}
+                onSizeChange={(nextSize) => setFilters((prev) => ({ ...prev, size: nextSize, page: 0 }))}
+              />
             </>
           )}
         </div>

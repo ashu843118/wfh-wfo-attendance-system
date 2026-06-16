@@ -11,6 +11,7 @@ import com.wfhwfo.attendance.attendance.entity.AttendanceSession;
 import com.wfhwfo.attendance.attendance.repository.AttendanceEventRepository;
 import com.wfhwfo.attendance.attendance.repository.AttendanceRecordRepository;
 import com.wfhwfo.attendance.attendance.util.GeoPointUtils;
+import com.wfhwfo.attendance.common.enums.AttendanceMode;
 import com.wfhwfo.attendance.common.enums.AttendanceEventType;
 import com.wfhwfo.attendance.common.enums.AttendanceStatus;
 import com.wfhwfo.attendance.common.enums.AttendanceTriggerMode;
@@ -107,7 +108,7 @@ public class AttendanceWriteService {
         AttendanceSession openSession = null;
         if (isCheckOutLikeEvent(eventType)) {
             openSession = requireOpenSession(user.getEmployeeId(), today);
-            if (!openSession.isAutoCheckoutEligible()) {
+            if (openSession.getSessionMode() != AttendanceMode.WFO) {
                 throw new BusinessException(
                         "Auto checkout is not allowed for this session",
                         "ATTENDANCE_AUTO_CHECKOUT_NOT_ALLOWED");
@@ -179,7 +180,7 @@ public class AttendanceWriteService {
 
     public boolean isAutoCheckoutEligible(Long employeeId, LocalDate date) {
         return attendanceSessionService.findOpenSession(employeeId, date)
-                .map(AttendanceSession::isAutoCheckoutEligible)
+                .map(session -> session.getSessionMode() == AttendanceMode.WFO)
                 .orElse(false);
     }
 

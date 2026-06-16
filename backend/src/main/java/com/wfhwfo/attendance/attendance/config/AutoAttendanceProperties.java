@@ -18,4 +18,14 @@ public class AutoAttendanceProperties {
      * Demo/assignment default: 60 seconds. Production recommendation: 15–30 minutes (900–1800 seconds).
      */
     private int checkoutGraceSeconds = 60;
+
+    /**
+     * Location readings with accuracy above this threshold are ignored for auto check-in/out decisions.
+     */
+    private double maxAccuracyMeters = 100.0;
+
+    /**
+     * Location readings older than this (seconds) are ignored for auto check-in/out decisions.
+     */
+    private int maxLocationAgeSeconds = 120;
 }

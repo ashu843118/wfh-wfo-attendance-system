@@ -2,6 +2,8 @@ package com.wfhwfo.attendance.attendance.repository;
 
 import com.wfhwfo.attendance.attendance.entity.AttendanceSession;
 import com.wfhwfo.attendance.common.enums.AttendanceSessionStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
@@ -15,4 +17,7 @@ public interface AttendanceSessionRepository extends JpaRepository<AttendanceSes
 
     List<AttendanceSession> findByEmployeeIdAndAttendanceDateOrderByCheckInTimeAscIdAsc(
             Long employeeId, LocalDate attendanceDate);
+
+    Page<AttendanceSession> findByEmployeeIdAndAttendanceDateOrderByCheckInTimeAscIdAsc(
+            Long employeeId, LocalDate attendanceDate, Pageable pageable);
 }

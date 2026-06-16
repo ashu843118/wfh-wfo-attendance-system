@@ -9,6 +9,8 @@ import com.wfhwfo.attendance.common.enums.AttendanceTriggerMode;
 import com.wfhwfo.attendance.common.exception.BusinessException;
 import com.wfhwfo.attendance.geofence.dto.GeoFenceMatchResult;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -33,6 +35,11 @@ public class AttendanceSessionService {
                 employeeId, date);
     }
 
+    public Page<AttendanceSession> findSessionsForDayPage(Long employeeId, LocalDate date, Pageable pageable) {
+        return attendanceSessionRepository.findByEmployeeIdAndAttendanceDateOrderByCheckInTimeAscIdAsc(
+                employeeId, date, pageable);
+    }
+
     public AttendanceSession openSession(
             Long employeeId,
             Long teamId,
@@ -48,7 +55,7 @@ public class AttendanceSessionService {
         }
 
         AttendanceMode sessionMode = resolveSessionMode(checkInEventType, geofenceMatch);
-        boolean autoCheckoutEligible = checkInEventType == AttendanceEventType.AUTO_CHECK_IN;
+        boolean autoCheckoutEligible = sessionMode == AttendanceMode.WFO;
 
         Long matchedOfficeId = geofenceMatch != null && geofenceMatch.isWithinFence()
                 ? geofenceMatch.getOfficeId() : null;

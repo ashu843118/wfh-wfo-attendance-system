@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { RefreshCw, Users, UserCheck, Building2, Home, Clock, AlertTriangle, ShieldAlert, UserX } from 'lucide-react'
 import Topbar from '../components/layout/Topbar'
 import KpiCard from '../components/cards/KpiCard'
@@ -6,19 +6,33 @@ import PieChartCard from '../components/charts/PieChartCard'
 import BarChartCard from '../components/charts/BarChartCard'
 import DataTable, { StatusBadge } from '../components/tables/DataTable'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import PaginationBar from '../components/common/PaginationBar'
 import { useToast } from '../components/common/Toast'
 import { useAuth } from '../auth/AuthContext'
 import usePolling from '../hooks/usePolling'
-import { getManagerDashboard, getManagerOutliers } from '../api/dashboardApi'
-import { formatLastUpdated } from '../utils/format'
+import { getManagerDashboard, getManagerOutliers, getManagerTeamAttendance } from '../api/dashboardApi'
+import { formatDateTime, formatLastUpdated, formatTime, getApiErrorMessage } from '../utils/format'
 import './DashboardPages.css'
 
 export default function ManagerDashboard() {
   const toast = useToast()
   const { isAuthenticated } = useAuth()
+  const [teamPage, setTeamPage] = useState(0)
+  const [teamSize, setTeamSize] = useState(20)
+  const [outlierPage, setOutlierPage] = useState(0)
+  const [outlierSize, setOutlierSize] = useState(20)
 
   const fetchDashboard = useCallback(() => getManagerDashboard(), [])
-  const fetchOutliers = useCallback(() => getManagerOutliers(), [])
+
+  const fetchTeamAttendance = useCallback(
+    () => getManagerTeamAttendance({ page: teamPage, size: teamSize }),
+    [teamPage, teamSize]
+  )
+
+  const fetchOutliers = useCallback(
+    () => getManagerOutliers(outlierPage, outlierSize),
+    [outlierPage, outlierSize]
+  )
 
   const {
     data: dashboard,
@@ -27,16 +41,25 @@ export default function ManagerDashboard() {
     refresh,
   } = usePolling(fetchDashboard, 60000, { enabled: isAuthenticated })
 
-  const { data: outliersPage, refresh: refreshOutliers } = usePolling(fetchOutliers, 60000, {
-    enabled: isAuthenticated,
-  })
+  const {
+    data: teamPageData,
+    loading: teamLoading,
+    refresh: refreshTeam,
+  } = usePolling(fetchTeamAttendance, 60000, { enabled: isAuthenticated })
+
+  const {
+    data: outliersPage,
+    loading: outliersLoading,
+    refresh: refreshOutliers,
+  } = usePolling(fetchOutliers, 60000, { enabled: isAuthenticated })
 
   const handleRefresh = async () => {
-    await Promise.all([refresh(), refreshOutliers()])
+    await Promise.all([refresh(), refreshTeam(), refreshOutliers()])
     toast.info('Dashboard refreshed')
   }
 
   const kpis = dashboard?.kpis
+  const teamRows = teamPageData?.content || []
   const outliers = outliersPage?.content || []
 
   const teamColumns = [
@@ -44,8 +67,8 @@ export default function ManagerDashboard() {
     { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
     { key: 'mode', label: 'Mode', render: (row) => <StatusBadge value={row.mode} type="mode" /> },
     { key: 'late', label: 'Late', render: (row) => (row.late ? <StatusBadge value="Late" type="late" /> : '—') },
-    { key: 'checkInTime', label: 'Check In' },
-    { key: 'checkOutTime', label: 'Check Out' },
+    { key: 'checkInTime', label: 'Check In', render: (row) => formatTime(row.checkInTime) },
+    { key: 'checkOutTime', label: 'Check Out', render: (row) => formatTime(row.checkOutTime) },
   ]
 
   const outlierColumns = [
@@ -57,7 +80,7 @@ export default function ManagerDashboard() {
     {
       key: 'detectedAt',
       label: 'Detected',
-      render: (row) => (row.detectedAt ? new Date(row.detectedAt).toLocaleString() : '—'),
+      render: (row) => formatDateTime(row.detectedAt),
     },
   ]
 
@@ -101,24 +124,60 @@ export default function ManagerDashboard() {
           <div className="card-header">
             <h3 className="card-title">Team Attendance Today</h3>
           </div>
-          <DataTable
-            columns={teamColumns}
-            data={dashboard?.teamTable || []}
-            keyField="employeeId"
-            emptyMessage="No team attendance data for today"
-          />
+          {teamLoading && !teamPageData ? (
+            <LoadingSpinner message="Loading team attendance..." />
+          ) : (
+            <>
+              <DataTable
+                columns={teamColumns}
+                data={teamRows}
+                keyField="employeeId"
+                emptyMessage="No team attendance data for today"
+              />
+              <PaginationBar
+                page={teamPage}
+                size={teamSize}
+                totalElements={teamPageData?.totalElements ?? 0}
+                totalPages={teamPageData?.totalPages ?? 0}
+                loading={teamLoading}
+                onPageChange={setTeamPage}
+                onSizeChange={(nextSize) => {
+                  setTeamSize(nextSize)
+                  setTeamPage(0)
+                }}
+              />
+            </>
+          )}
         </div>
 
         <div className="card">
           <div className="card-header">
             <h3 className="card-title">Open Outliers</h3>
           </div>
-          <DataTable
-            columns={outlierColumns}
-            data={outliers}
-            keyField="id"
-            emptyMessage="No open outliers detected"
-          />
+          {outliersLoading && !outliersPage ? (
+            <LoadingSpinner message="Loading outliers..." />
+          ) : (
+            <>
+              <DataTable
+                columns={outlierColumns}
+                data={outliers}
+                keyField="id"
+                emptyMessage="No open outliers detected"
+              />
+              <PaginationBar
+                page={outlierPage}
+                size={outlierSize}
+                totalElements={outliersPage?.totalElements ?? 0}
+                totalPages={outliersPage?.totalPages ?? 0}
+                loading={outliersLoading}
+                onPageChange={setOutlierPage}
+                onSizeChange={(nextSize) => {
+                  setOutlierSize(nextSize)
+                  setOutlierPage(0)
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
     </>

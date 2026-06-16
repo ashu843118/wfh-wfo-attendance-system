@@ -14,6 +14,7 @@ import com.wfhwfo.attendance.notification.entity.Notification;
 import com.wfhwfo.attendance.notification.repository.NotificationRepository;
 import com.wfhwfo.attendance.office.entity.OfficeLocation;
 import com.wfhwfo.attendance.office.repository.OfficeLocationRepository;
+import com.wfhwfo.attendance.office.service.EmployeeOfficeCacheService;
 import com.wfhwfo.attendance.outlier.entity.AttendanceOutlier;
 import com.wfhwfo.attendance.outlier.repository.AttendanceOutlierRepository;
 import com.wfhwfo.attendance.policy.entity.AttendancePolicy;
@@ -45,6 +46,8 @@ public class DemoDataSeeder implements ApplicationRunner {
 
     private static final String DEMO_PASSWORD_HASH =
             "$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG";
+    private static final String DEMO_EMPLOYEE_EMAIL = "employee@demo.com";
+    private static final String DEMO_EMPLOYEE_OFFICE_NAME = "EY Bengaluru - Ecospace";
 
     private final DemoDataProperties properties;
     private final DemoCsvLoader csvLoader;
@@ -59,6 +62,7 @@ public class DemoDataSeeder implements ApplicationRunner {
     private final AttendanceEventRepository attendanceEventRepository;
     private final AttendanceOutlierRepository attendanceOutlierRepository;
     private final NotificationRepository notificationRepository;
+    private final EmployeeOfficeCacheService employeeOfficeCacheService;
     private final TransactionTemplate transactionTemplate;
 
     @Override
@@ -75,9 +79,10 @@ public class DemoDataSeeder implements ApplicationRunner {
 
     protected void doSeed() {
         Map<String, Team> teamsByName = seedTeams();
-        List<OfficeLocation> offices = seedOffices();
+        seedOffices();
+        List<OfficeLocation> offices = officeLocationRepository.findByActiveTrue();
         seedPolicies(teamsByName);
-        List<Employee> employees = seedEmployees(teamsByName);
+        List<Employee> employees = seedEmployees(teamsByName, offices);
         Map<Long, AttendancePolicy> policyByTeamId = attendancePolicyRepository.findAll().stream()
                 .collect(Collectors.toMap(AttendancePolicy::getTeamId, policy -> policy));
 
@@ -124,6 +129,8 @@ public class DemoDataSeeder implements ApplicationRunner {
 
         saveInBatches(outlierResult.outliers(), attendanceOutlierRepository::saveAll);
         saveInBatches(outlierResult.notifications(), notificationRepository::saveAll);
+
+        employeeOfficeCacheService.evictAllEmployeeOfficeCaches();
     }
 
     private Map<String, Team> seedTeams() {
@@ -136,7 +143,12 @@ public class DemoDataSeeder implements ApplicationRunner {
     }
 
     private List<OfficeLocation> seedOffices() {
+        java.util.Set<String> existingNames = officeLocationRepository.findAll().stream()
+                .map(OfficeLocation::getOfficeName)
+                .collect(java.util.stream.Collectors.toSet());
+
         List<OfficeLocation> offices = csvLoader.loadOffices().stream()
+                .filter(row -> !existingNames.contains(row.officeName()))
                 .map(row -> OfficeLocation.builder()
                         .officeName(row.officeName())
                         .address(row.address())
@@ -147,6 +159,9 @@ public class DemoDataSeeder implements ApplicationRunner {
                         .active(row.active())
                         .build())
                 .toList();
+        if (offices.isEmpty()) {
+            return officeLocationRepository.findByActiveTrue();
+        }
         return officeLocationRepository.saveAll(offices);
     }
 
@@ -171,16 +186,18 @@ public class DemoDataSeeder implements ApplicationRunner {
         attendancePolicyRepository.saveAll(policies);
     }
 
-    private List<Employee> seedEmployees(Map<String, Team> teamsByName) {
+    private List<Employee> seedEmployees(Map<String, Team> teamsByName, List<OfficeLocation> offices) {
         List<DemoCsvLoader.EmployeeRow> rows = csvLoader.loadEmployees();
         List<Employee> employees = new ArrayList<>();
-        List<OfficeLocation> offices = officeLocationRepository.findByActiveTrue();
+        List<OfficeLocation> teamOffices = offices.stream()
+                .filter(office -> !DEMO_EMPLOYEE_OFFICE_NAME.equals(office.getOfficeName()))
+                .toList();
 
         for (DemoCsvLoader.EmployeeRow row : rows) {
             Long teamId = row.teamName() != null ? teamsByName.get(row.teamName()).getId() : null;
             Long assignedOfficeId = null;
-            if (teamId != null && !offices.isEmpty()) {
-                assignedOfficeId = offices.get((int) ((teamId - 1) % offices.size())).getId();
+            if (teamId != null && !teamOffices.isEmpty()) {
+                assignedOfficeId = teamOffices.get((int) ((teamId - 1) % teamOffices.size())).getId();
             }
             employees.add(Employee.builder()
                     .name(row.name())
@@ -204,6 +221,11 @@ public class DemoDataSeeder implements ApplicationRunner {
                 employees.get(i).setManagerId(emailToId.get(row.managerEmail()));
             }
         }
+
+        officeLocationRepository.findFirstByOfficeName(DEMO_EMPLOYEE_OFFICE_NAME)
+                .ifPresent(eyOffice -> employees.stream()
+                        .filter(employee -> DEMO_EMPLOYEE_EMAIL.equals(employee.getEmail()))
+                        .forEach(employee -> employee.setAssignedOfficeLocationId(eyOffice.getId())));
 
         return employeeRepository.saveAll(employees);
     }

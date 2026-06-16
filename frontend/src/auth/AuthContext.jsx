@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { login as loginApi, getCurrentUser } from '../api/authApi'
 import { clearStoredToken, getStoredToken, setStoredToken } from '../api/apiClient'
+import { clearAllAutoAttendanceSessionKeys } from '../utils/autoAttendanceSession'
 
 const USER_KEY = 'attendance_user'
 
@@ -82,6 +83,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     clearStoredToken()
+    clearAllAutoAttendanceSessionKeys()
     setUser(null)
     persistUser(null)
   }, [])

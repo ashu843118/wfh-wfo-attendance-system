@@ -4,12 +4,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wfhwfo.attendance.attendance.entity.AttendanceRecord;
 import com.wfhwfo.attendance.attendance.repository.AttendanceRecordRepository;
 import com.wfhwfo.attendance.common.adapter.CacheAdapter;
+import com.wfhwfo.attendance.common.dto.PagedResponse;
+import com.wfhwfo.attendance.common.dto.PagedResponseMapper;
 import com.wfhwfo.attendance.common.enums.AttendanceMode;
 import com.wfhwfo.attendance.common.enums.AttendanceStatus;
 import com.wfhwfo.attendance.common.enums.OutlierStatus;
 import com.wfhwfo.attendance.common.enums.ProcessingStatus;
 import com.wfhwfo.attendance.common.security.SecurityUtils;
 import com.wfhwfo.attendance.dashboard.dto.ManagerDashboardResponse;
+import com.wfhwfo.attendance.dashboard.dto.TeamAttendanceRowResponse;
 import com.wfhwfo.attendance.employee.repository.EmployeeRepository;
 import com.wfhwfo.attendance.outlier.repository.AttendanceOutlierRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -32,7 +34,6 @@ import java.util.Optional;
 @Slf4j
 public class ManagerDashboardService {
 
-    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
     private static final List<AttendanceStatus> PRESENT_STATUSES =
             List.of(AttendanceStatus.CHECKED_IN, AttendanceStatus.CHECKED_OUT,
                     AttendanceStatus.SYSTEM_CLOSED, AttendanceStatus.MISSING_CHECKOUT);
@@ -62,6 +63,14 @@ public class ManagerDashboardService {
         Long managerId = SecurityUtils.currentUser().getEmployeeId();
         LocalDate targetDate = date != null ? date : LocalDate.now();
         return attendanceRecordRepository.findTeamAttendanceByManagerAndDate(managerId, targetDate, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<TeamAttendanceRowResponse> getTeamAttendanceRows(LocalDate date, Pageable pageable) {
+        Long managerId = SecurityUtils.currentUser().getEmployeeId();
+        LocalDate targetDate = date != null ? date : LocalDate.now();
+        Page<Object[]> page = attendanceRecordRepository.findTeamDashboardRowsPage(managerId, targetDate, pageable);
+        return PagedResponseMapper.from(page, this::toTeamAttendanceRow);
     }
 
     @Transactional(readOnly = true)
@@ -161,11 +170,29 @@ public class ManagerDashboardService {
                     .status(status != null ? status.name() : "ABSENT")
                     .mode(mode != null ? mode.name() : null)
                     .late(late)
-                    .checkInTime(checkIn != null ? checkIn.format(TIME_FORMAT) : null)
-                    .checkOutTime(checkOut != null ? checkOut.format(TIME_FORMAT) : null)
+                    .checkInTime(checkIn)
+                    .checkOutTime(checkOut)
                     .build());
         }
         return tableRows;
+    }
+
+    private TeamAttendanceRowResponse toTeamAttendanceRow(Object[] row) {
+        AttendanceStatus status = row[2] != null ? (AttendanceStatus) row[2] : null;
+        AttendanceMode mode = row[3] != null ? (AttendanceMode) row[3] : null;
+        Boolean late = row[4] != null ? (Boolean) row[4] : null;
+        java.time.LocalDateTime checkIn = row[5] != null ? (java.time.LocalDateTime) row[5] : null;
+        java.time.LocalDateTime checkOut = row[6] != null ? (java.time.LocalDateTime) row[6] : null;
+
+        return TeamAttendanceRowResponse.builder()
+                .employeeId((Long) row[0])
+                .employeeName((String) row[1])
+                .status(status != null ? status.name() : "ABSENT")
+                .mode(mode != null ? mode.name() : null)
+                .late(late)
+                .checkInTime(checkIn)
+                .checkOutTime(checkOut)
+                .build();
     }
 
     private void cacheResponse(String cacheKey, ManagerDashboardResponse response) {

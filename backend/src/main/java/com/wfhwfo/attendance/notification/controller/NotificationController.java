@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,7 +30,7 @@ public class NotificationController {
     @GetMapping
     @Operation(summary = "Get paginated notifications for the current user")
     public ResponseEntity<ApiResponse<PagedResponse<NotificationResponse>>> getNotifications(
-            @PageableDefault(size = 20) Pageable pageable) {
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         PagedResponse<NotificationResponse> response = notificationService.getMyNotifications(pageable);
         return ResponseEntity.ok(ApiResponse.success("Notifications fetched", response));
     }

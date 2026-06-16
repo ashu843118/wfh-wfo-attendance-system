@@ -25,6 +25,7 @@ public class AttendanceRecordResponse {
     private LocalDateTime checkInTime;
     private LocalDateTime checkOutTime;
     private AttendanceMode attendanceMode;
+    private AttendanceMode currentSessionMode;
     private CurrentSessionStatus currentSessionStatus;
     private AttendanceStatus status;
     private ProcessingStatus processingStatus;

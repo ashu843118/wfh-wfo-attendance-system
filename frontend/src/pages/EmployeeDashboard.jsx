@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   RefreshCw,
   LogIn,
@@ -20,18 +20,23 @@ import { useToast } from '../components/common/Toast'
 import { useAuth } from '../auth/AuthContext'
 import usePolling from '../hooks/usePolling'
 import useGeolocation from '../hooks/useGeolocation'
-import useAutoAttendanceTracker, { PERMISSION_DENIED_MESSAGE } from '../hooks/useAutoAttendanceTracker'
+import useAutoAttendanceTracker, { PERMISSION_DENIED_MESSAGE, TRACKING_STATE_LABELS } from '../hooks/useAutoAttendanceTracker'
+import {
+  clearWfhPromptDismissed,
+  isWfhPromptDismissed,
+  markWfhPromptDismissed,
+} from '../utils/autoAttendanceSession'
 import { getEmployeeDashboard } from '../api/dashboardApi'
 import { checkIn, checkOut, confirmWfhCheckIn, dismissWfhPrompt, getTodayAttendance } from '../api/attendanceApi'
-import { formatLastUpdated, getApiErrorMessage } from '../utils/format'
+import { formatDate, formatDuration, formatLastUpdated, formatTime, getApiErrorMessage } from '../utils/format'
 import './DashboardPages.css'
 
 const AUTO_ATTENDANCE_INFO =
-  'Auto attendance is active while this app is open. If you are inside your assigned office geofence, WFO check-in is recorded automatically. If you are outside office geofence, you can confirm WFH check-in manually. Auto checkout applies only to auto WFO check-ins. Manual or WFH check-ins require manual checkout or are closed at end of day. Location is used only for attendance and is not tracked when the app is closed.'
+  'Location is used only for attendance decisions while this app is open. Before check-in, your position is checked once against your assigned office geofence — inside triggers WFO check-in; outside prompts WFH confirmation. After a WFO check-in (auto or manual), geofence monitoring stays active for auto-checkout if you leave the office for the configured grace period. WFH sessions do not use continuous location tracking and require manual checkout, or the session is closed at end of day. Auto-checkout only runs while the PWA/browser is open with location permission; missed checkouts are handled by end-of-day system close.'
 
 export default function EmployeeDashboard() {
   const toast = useToast()
-  const { isAuthenticated } = useAuth()
+  const { user, isAuthenticated } = useAuth()
   const { getLocation, loading: geoLoading } = useGeolocation()
   const [actionLoading, setActionLoading] = useState(null)
   const [showWfhModal, setShowWfhModal] = useState(false)
@@ -77,11 +82,95 @@ export default function EmployeeDashboard() {
     setShowWfhModal(true)
   }, [])
 
-  const { trackingStateLabel, assignedOfficeName, error: autoError, resetWfhPrompt } = useAutoAttendanceTracker({
-    enabled: isAuthenticated,
-    onSignalProcessed: handleSignalProcessed,
-    onWfhConfirmationRequired: handleWfhConfirmationRequired,
-  })
+  const kpis = dashboard?.kpis
+  const assignedOffice = dashboard?.assignedOffice
+  const isPending = todayRecord?.processingStatus === 'CLASSIFICATION_PENDING'
+  const hasOpenSession = todayRecord?.currentSessionStatus === 'OPEN' || todayRecord?.status === 'CHECKED_IN'
+  const openSessionMode = todayRecord?.currentSessionMode
+  const isWfoOpenSession = hasOpenSession && openSessionMode === 'WFO'
+  const isWfhOpenSession = hasOpenSession && openSessionMode === 'WFH'
+  const isDayClosed =
+    todayRecord?.status === 'SYSTEM_CLOSED' ||
+    todayRecord?.status === 'MISSING_CHECKOUT'
+
+  const attendanceDate =
+    todayRecord?.attendanceDate || new Date().toISOString().slice(0, 10)
+
+  const trackingMode = useMemo(() => {
+    if (!isAuthenticated || user?.role !== 'EMPLOYEE' || !user?.employeeId) {
+      return 'idle'
+    }
+    if (todayLoading) {
+      return 'idle'
+    }
+    if (isDayClosed) {
+      return 'idle'
+    }
+    if (isWfoOpenSession) {
+      return 'watch'
+    }
+    if (hasOpenSession) {
+      return 'idle'
+    }
+    return 'once'
+  }, [hasOpenSession, isAuthenticated, isDayClosed, isWfoOpenSession, todayLoading, user?.employeeId, user?.role])
+
+  const evaluationKey = useMemo(() => {
+    if (trackingMode !== 'once') return null
+    const status = todayRecord?.status || 'NOT_CHECKED_IN'
+    const session = todayRecord?.currentSessionStatus || 'NONE'
+    return `${attendanceDate}:${status}:${session}`
+  }, [attendanceDate, todayRecord?.currentSessionStatus, todayRecord?.status, trackingMode])
+
+  const { trackingState, trackingStateLabel, assignedOfficeName, error: autoError, stopTracking } =
+    useAutoAttendanceTracker({
+      mode: trackingMode,
+      userId: user?.employeeId,
+      attendanceDate,
+      evaluationKey,
+      onSignalProcessed: handleSignalProcessed,
+      onWfhConfirmationRequired: handleWfhConfirmationRequired,
+    })
+
+  const statusLabel = useMemo(() => {
+    if (isDayClosed) {
+      return TRACKING_STATE_LABELS.SYSTEM_CLOSED
+    }
+    if (isWfoOpenSession) {
+      if (trackingState === 'AUTO_CHECKOUT_PENDING') {
+        return TRACKING_STATE_LABELS.AUTO_CHECKOUT_PENDING
+      }
+      return TRACKING_STATE_LABELS.CHECKED_IN_WFO
+    }
+    if (isWfhOpenSession) {
+      return TRACKING_STATE_LABELS.CHECKED_IN_WFH
+    }
+    if (todayRecord?.status === 'CHECKED_OUT') {
+      return 'Checked out — check-in available'
+    }
+    if (trackingMode === 'once') {
+      return trackingStateLabel
+    }
+    return TRACKING_STATE_LABELS.NOT_CHECKED_IN
+  }, [
+    isDayClosed,
+    isWfhOpenSession,
+    isWfoOpenSession,
+    todayRecord?.status,
+    trackingMode,
+    trackingState,
+    trackingStateLabel,
+  ])
+
+  const statusHint = useMemo(() => {
+    if (isWfoOpenSession && trackingState !== 'AUTO_CHECKOUT_PENDING') {
+      return TRACKING_STATE_LABELS.AUTO_CHECKOUT_MONITORING_ACTIVE
+    }
+    if (isWfhOpenSession) {
+      return 'Manual checkout required. System will close at end of day if checkout is missed.'
+    }
+    return null
+  }, [isWfhOpenSession, isWfoOpenSession, trackingState])
 
   const handleRefresh = async () => {
     await Promise.all([refreshDash(), refreshToday()])
@@ -98,7 +187,9 @@ export default function EmployeeDashboard() {
         toast.info('Classification is pending — your attendance mode will update shortly')
       }
       setShowWfhModal(false)
-      resetWfhPrompt()
+      if (user?.employeeId) {
+        clearWfhPromptDismissed(user.employeeId, attendanceDate)
+      }
       await Promise.all([refreshDash(), refreshToday()])
     } catch (err) {
       toast.error(getApiErrorMessage(err))
@@ -114,7 +205,9 @@ export default function EmployeeDashboard() {
       await confirmWfhCheckIn(location)
       toast.success('WFH check-in recorded successfully.')
       setShowWfhModal(false)
-      resetWfhPrompt()
+      if (user?.employeeId) {
+        clearWfhPromptDismissed(user.employeeId, attendanceDate)
+      }
       await Promise.all([refreshDash(), refreshToday()])
     } catch (err) {
       toast.error(getApiErrorMessage(err))
@@ -133,6 +226,10 @@ export default function EmployeeDashboard() {
         toast.info('Classification is pending — your attendance mode will update shortly')
       }
       await Promise.all([refreshDash(), refreshToday()])
+      if (user?.employeeId) {
+        clearWfhPromptDismissed(user.employeeId, attendanceDate)
+      }
+      stopTracking()
     } catch (err) {
       toast.error(getApiErrorMessage(err))
     } finally {
@@ -140,22 +237,15 @@ export default function EmployeeDashboard() {
     }
   }
 
-  const kpis = dashboard?.kpis
-  const isPending = todayRecord?.processingStatus === 'CLASSIFICATION_PENDING'
-  const hasOpenSession = todayRecord?.currentSessionStatus === 'OPEN' || todayRecord?.status === 'CHECKED_IN'
-  const isDayClosed =
-    todayRecord?.status === 'SYSTEM_CLOSED' ||
-    todayRecord?.status === 'MISSING_CHECKOUT'
-
   const permissionDenied = autoError?.message === PERMISSION_DENIED_MESSAGE
 
   const columns = [
-    { key: 'date', label: 'Date' },
+    { key: 'date', label: 'Date', render: (row) => formatDate(row.date) },
     { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
     { key: 'mode', label: 'Mode', render: (row) => <StatusBadge value={row.mode} type="mode" /> },
     { key: 'late', label: 'Late', render: (row) => (row.late ? <StatusBadge value="Late" type="late" /> : '—') },
-    { key: 'checkInTime', label: 'Check In' },
-    { key: 'checkOutTime', label: 'Check Out' },
+    { key: 'checkInTime', label: 'Check In', render: (row) => formatTime(row.checkInTime) },
+    { key: 'checkOutTime', label: 'Check Out', render: (row) => formatTime(row.checkOutTime) },
   ]
 
   if (dashLoading && !dashboard) {
@@ -179,6 +269,26 @@ export default function EmployeeDashboard() {
             Last updated: {formatLastUpdated(dashUpdated)} · Attendance status: {formatLastUpdated(todayUpdated)}
           </p>
         </div>
+
+        {assignedOffice && (
+          <div className="card assigned-office-card">
+            <div className="card-header">
+              <h3 className="card-title">Assigned Office</h3>
+            </div>
+            <div className="assigned-office-card__body">
+              <p className="assigned-office-card__name">{assignedOffice.officeName}</p>
+              {assignedOffice.address && (
+                <p className="assigned-office-card__address">{assignedOffice.address}</p>
+              )}
+              <p className="assigned-office-card__meta">
+                Geofence radius: {assignedOffice.radiusMeters ?? '—'} meters
+              </p>
+              <p className="assigned-office-card__hint">
+                Your attendance is validated against this assigned office.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="checkin-panel card">
           <div className="checkin-panel__header">
@@ -206,9 +316,10 @@ export default function EmployeeDashboard() {
           <div className="auto-track-panel">
             <div className="auto-track-panel__state">
               <MapPin size={14} />
-              <span>{trackingStateLabel}</span>
+              <span>{statusLabel}</span>
             </div>
-            {assignedOfficeName && (
+            {statusHint && <p className="auto-track-panel__hint">{statusHint}</p>}
+            {assignedOfficeName && !assignedOffice && (
               <p className="auto-track-panel__office">
                 Assigned office: <strong>{assignedOfficeName}</strong>
               </p>
@@ -221,7 +332,7 @@ export default function EmployeeDashboard() {
             )}
           </div>
 
-          {showWfhModal && !hasOpenSession && (
+          {showWfhModal && !hasOpenSession && !isWfhPromptDismissed(user?.employeeId, attendanceDate) && (
             <div className="wfh-modal card">
               <p>You are currently outside office geofence. Do you want to check in as Work From Home?</p>
               <div className="form-actions">
@@ -230,12 +341,14 @@ export default function EmployeeDashboard() {
                   className="btn btn-secondary"
                   onClick={async () => {
                     setShowWfhModal(false)
+                    if (user?.employeeId) {
+                      markWfhPromptDismissed(user.employeeId, attendanceDate)
+                    }
                     try {
                       await dismissWfhPrompt()
                     } catch (err) {
                       toast.error(getApiErrorMessage(err))
                     }
-                    resetWfhPrompt()
                   }}
                 >
                   Not now
@@ -269,7 +382,7 @@ export default function EmployeeDashboard() {
                   <span className="label">Office Time</span>
                   <span>
                     {todayRecord?.totalOfficeMinutes != null
-                      ? `${todayRecord.totalOfficeMinutes} min`
+                      ? formatDuration(todayRecord.totalOfficeMinutes)
                       : '—'}
                   </span>
                 </div>
@@ -279,11 +392,11 @@ export default function EmployeeDashboard() {
                 </div>
                 <div className="checkin-panel__stat">
                   <span className="label">Check In</span>
-                  <span>{todayRecord?.checkInTime ? new Date(todayRecord.checkInTime).toLocaleTimeString() : '—'}</span>
+                  <span>{formatTime(todayRecord?.checkInTime)}</span>
                 </div>
                 <div className="checkin-panel__stat">
                   <span className="label">Check Out</span>
-                  <span>{todayRecord?.checkOutTime ? new Date(todayRecord.checkOutTime).toLocaleTimeString() : '—'}</span>
+                  <span>{formatTime(todayRecord?.checkOutTime)}</span>
                 </div>
               </div>
 

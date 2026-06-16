@@ -1,7 +1,12 @@
 import apiClient, { unwrapResponse } from './apiClient'
 
-export async function getOfficeLocations() {
-  const response = await apiClient.get('/api/admin/office-locations')
+export async function getOfficeLocations({ page = 0, size = 20 } = {}) {
+  const response = await apiClient.get('/api/admin/offices', { params: { page, size } })
+  return unwrapResponse(response)
+}
+
+export async function getActiveOfficeLocations() {
+  const response = await apiClient.get('/api/admin/office-locations/active')
   return unwrapResponse(response)
 }
 
@@ -25,8 +30,8 @@ export async function deleteOfficeLocation(id) {
   return unwrapResponse(response)
 }
 
-export async function getPolicies() {
-  const response = await apiClient.get('/api/admin/policies')
+export async function getPolicies({ page = 0, size = 20 } = {}) {
+  const response = await apiClient.get('/api/admin/policies', { params: { page, size } })
   return unwrapResponse(response)
 }
 

@@ -1,5 +1,7 @@
 package com.wfhwfo.attendance.policy.service;
 
+import com.wfhwfo.attendance.common.dto.PagedResponse;
+import com.wfhwfo.attendance.common.dto.PagedResponseMapper;
 import com.wfhwfo.attendance.common.exception.BusinessException;
 import com.wfhwfo.attendance.policy.dto.AttendancePolicyRequest;
 import com.wfhwfo.attendance.policy.dto.AttendancePolicyResponse;
@@ -7,6 +9,8 @@ import com.wfhwfo.attendance.policy.entity.AttendancePolicy;
 import com.wfhwfo.attendance.policy.repository.AttendancePolicyRepository;
 import com.wfhwfo.attendance.team.repository.TeamRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +28,12 @@ public class AttendancePolicyService {
         return attendancePolicyRepository.findAll().stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<AttendancePolicyResponse> list(Pageable pageable) {
+        Page<AttendancePolicy> page = attendancePolicyRepository.findAllByOrderByTeamIdAsc(pageable);
+        return PagedResponseMapper.from(page, this::toResponse);
     }
 
     @Transactional(readOnly = true)

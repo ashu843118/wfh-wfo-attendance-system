@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { LogIn, Building2, Shield, Users, Crown } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/common/Toast'
-import { getApiErrorMessage } from '../utils/format'
+import { getLoginErrorMessage } from '../utils/format'
 import './LoginPage.css'
 
 const DEMO_USERS = [
@@ -29,7 +29,7 @@ export default function LoginPage() {
       toast.success(`Welcome back, ${user.name}!`)
       navigate(getDashboardPath(user.role), { replace: true })
     } catch (err) {
-      toast.error(getApiErrorMessage(err))
+      toast.error(getLoginErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -44,7 +44,7 @@ export default function LoginPage() {
       toast.success(`Signed in as ${demoUser.label}`)
       navigate(getDashboardPath(user.role), { replace: true })
     } catch (err) {
-      toast.error(getApiErrorMessage(err))
+      toast.error(getLoginErrorMessage(err))
     } finally {
       setLoading(false)
     }

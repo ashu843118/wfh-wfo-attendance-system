@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -64,7 +65,7 @@ public class ManagerDashboardResponse {
         private String status;
         private String mode;
         private Boolean late;
-        private String checkInTime;
-        private String checkOutTime;
+        private LocalDateTime checkInTime;
+        private LocalDateTime checkOutTime;
     }
 }

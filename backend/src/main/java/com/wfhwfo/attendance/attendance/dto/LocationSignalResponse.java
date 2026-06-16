@@ -16,6 +16,7 @@ public class LocationSignalResponse {
 
     private AutoTrackingStateLabel trackingState;
     private boolean insideOffice;
+    private boolean locationReliable;
     private String assignedOfficeName;
     private String matchedOfficeName;
     private Double distanceFromOfficeMeters;

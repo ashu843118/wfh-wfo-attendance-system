@@ -22,8 +22,8 @@ Documented assumptions behind the MVP WFH/WFO attendance implementation. If an a
 10. **WFO can be auto-recorded** when the employee is inside the assigned office geofence (after a short inside stability period).
 11. **WFH is never marked silently.** Outside the fence, the employee must confirm WFH or use manual check-in.
 12. **Manual check-in classifies WFO vs WFH** from current location vs assigned office geofence at check-in time.
-13. **Auto checkout applies only to sessions created by auto WFO check-in.**
-14. **Manual check-in and WFH-confirmed sessions require manual checkout or EOD system close.**
+13. **Auto checkout applies to all active WFO sessions** (auto or manual check-in). A limited geofence watcher runs only while the app is open.
+14. **WFH sessions do not use continuous location monitoring** and require manual checkout or EOD system close.
 15. **Same-day multiple sessions are allowed.** Check-in is blocked only while a session is open.
 16. **Final daily attendance mode is WFO or WFH only** — no HYBRID status on dashboards in MVP.
 17. **A WFO day is determined by office duration:** `total_office_minutes >= required_wfo_minutes` (default **180** minutes, configurable in `attendance_policies`).

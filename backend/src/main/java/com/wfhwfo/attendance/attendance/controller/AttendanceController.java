@@ -6,6 +6,7 @@ import com.wfhwfo.attendance.attendance.dto.AttendanceEventResponse;
 import com.wfhwfo.attendance.attendance.dto.AutoAttendanceEventRequest;
 import com.wfhwfo.attendance.attendance.dto.LocationPayload;
 import com.wfhwfo.attendance.attendance.dto.LocationSignalResponse;
+import com.wfhwfo.attendance.attendance.dto.AttendanceSessionResponse;
 import com.wfhwfo.attendance.attendance.dto.CheckInRequest;
 import com.wfhwfo.attendance.attendance.dto.CheckOutRequest;
 import com.wfhwfo.attendance.attendance.service.AttendanceService;
@@ -13,11 +14,13 @@ import com.wfhwfo.attendance.common.dto.ApiResponse;
 import com.wfhwfo.attendance.common.dto.PagedResponse;
 import com.wfhwfo.attendance.config.OpenApiResponseDocs;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -92,24 +95,58 @@ public class AttendanceController {
         return ResponseEntity.ok(ApiResponse.success("Auto attendance event recorded", response));
     }
 
-    @GetMapping("/me/events")
-    @Operation(summary = "Get paginated attendance event audit history")
+    @GetMapping({"/history", "/me"})
+    @Operation(summary = "Get paginated attendance history for the current employee")
     @OpenApiResponseDocs.StandardApiResponses
-    public ResponseEntity<ApiResponse<PagedResponse<AttendanceEventResponse>>> getEventHistory(
+    public ResponseEntity<ApiResponse<PagedResponse<AttendanceRecordResponse>>> getHistory(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @PageableDefault(size = 50) Pageable pageable) {
-        PagedResponse<AttendanceEventResponse> response = attendanceService.getEventHistory(from, to, pageable);
+            @PageableDefault(size = 20, sort = "attendanceDate", direction = Sort.Direction.DESC) Pageable pageable) {
+        PagedResponse<AttendanceRecordResponse> response = attendanceService.getHistory(from, to, pageable);
+        return ResponseEntity.ok(ApiResponse.success("Attendance history fetched successfully", response));
+    }
+
+    @GetMapping({"/events", "/me/events"})
+    @Operation(summary = "Get paginated attendance events for a date or date range")
+    @OpenApiResponseDocs.StandardApiResponses
+    public ResponseEntity<ApiResponse<PagedResponse<AttendanceEventResponse>>> getEvents(
+            @Parameter(description = "Single date for session/event detail view")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @PageableDefault(size = 20, sort = "eventTime", direction = Sort.Direction.ASC) Pageable pageable) {
+        PagedResponse<AttendanceEventResponse> response = date != null
+                ? attendanceService.getEventsForDate(date, pageable)
+                : attendanceService.getEventHistory(from, to, pageable);
         return ResponseEntity.ok(ApiResponse.success("Attendance events fetched", response));
     }
 
     @GetMapping("/me/events/{date}")
-    @Operation(summary = "Get attendance events for a specific date")
+    @Operation(summary = "Get all attendance events for a specific date (legacy, non-paginated)")
     @OpenApiResponseDocs.StandardApiResponses
-    public ResponseEntity<ApiResponse<List<AttendanceEventResponse>>> getEventsForDate(
+    public ResponseEntity<ApiResponse<List<AttendanceEventResponse>>> getEventsForDateLegacy(
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        List<AttendanceEventResponse> response = attendanceService.getEventsForDate(date);
+        List<AttendanceEventResponse> response = attendanceService.getEventsForDateList(date);
         return ResponseEntity.ok(ApiResponse.success("Attendance events for date fetched", response));
+    }
+
+    @GetMapping({"/sessions", "/me/sessions"})
+    @Operation(summary = "Get paginated attendance sessions for a specific date")
+    @OpenApiResponseDocs.StandardApiResponses
+    public ResponseEntity<ApiResponse<PagedResponse<AttendanceSessionResponse>>> getSessions(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @PageableDefault(size = 20, sort = "checkInTime", direction = Sort.Direction.ASC) Pageable pageable) {
+        PagedResponse<AttendanceSessionResponse> response = attendanceService.getSessionsForDate(date, pageable);
+        return ResponseEntity.ok(ApiResponse.success("Attendance sessions fetched", response));
+    }
+
+    @GetMapping("/me/sessions/{date}")
+    @Operation(summary = "Get all attendance sessions for a specific date (legacy, non-paginated)")
+    @OpenApiResponseDocs.StandardApiResponses
+    public ResponseEntity<ApiResponse<List<AttendanceSessionResponse>>> getSessionsForDateLegacy(
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        List<AttendanceSessionResponse> response = attendanceService.getSessionsForDateList(date);
+        return ResponseEntity.ok(ApiResponse.success("Attendance sessions for date fetched", response));
     }
 
     @GetMapping("/me/today")
@@ -118,16 +155,5 @@ public class AttendanceController {
     public ResponseEntity<ApiResponse<AttendanceRecordResponse>> getToday() {
         AttendanceRecordResponse response = attendanceService.getTodayForEmployee();
         return ResponseEntity.ok(ApiResponse.success("Today's attendance fetched", response));
-    }
-
-    @GetMapping("/me")
-    @Operation(summary = "Get paginated attendance history for the current employee")
-    @OpenApiResponseDocs.StandardApiResponses
-    public ResponseEntity<ApiResponse<PagedResponse<AttendanceRecordResponse>>> getHistory(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @PageableDefault(size = 20) Pageable pageable) {
-        PagedResponse<AttendanceRecordResponse> response = attendanceService.getHistory(from, to, pageable);
-        return ResponseEntity.ok(ApiResponse.success("Attendance history fetched", response));
     }
 }

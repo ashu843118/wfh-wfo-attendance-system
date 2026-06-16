@@ -45,6 +45,8 @@ class LocationSignalServiceTest {
     @Mock
     private AttendanceRecordRepository attendanceRecordRepository;
     @Mock
+    private AttendanceSessionService attendanceSessionService;
+    @Mock
     private AttendanceWriteService attendanceWriteService;
     @Mock
     private CacheAdapter cacheAdapter;
@@ -77,6 +79,7 @@ class LocationSignalServiceTest {
                 employeeOfficeCacheService,
                 assignedOfficeGeofenceService,
                 attendanceRecordRepository,
+                attendanceSessionService,
                 attendanceWriteService,
                 cacheAdapter,
                 objectMapper,

@@ -68,8 +68,8 @@ class AttendanceCheckInIntegrationTest {
         HttpHeaders headers = authHeaders(token);
         Map<String, Object> checkInBody = Map.of(
                 "location", Map.of(
-                        "latitude", 18.5912,
-                        "longitude", 73.7389,
+                        "latitude", 12.9262,
+                        "longitude", 77.6811,
                         "accuracy", 12.5,
                         "timestamp", java.time.LocalDateTime.now().toString()
                 ),

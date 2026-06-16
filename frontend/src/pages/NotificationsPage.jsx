@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react'
 import Topbar from '../components/layout/Topbar'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import EmptyState from '../components/common/EmptyState'
+import PaginationBar from '../components/common/PaginationBar'
 import { useToast } from '../components/common/Toast'
 import { useAuth } from '../auth/AuthContext'
 import usePolling from '../hooks/usePolling'
@@ -14,10 +15,11 @@ export default function NotificationsPage() {
   const toast = useToast()
   const { isAuthenticated } = useAuth()
   const [page, setPage] = useState(0)
+  const [size, setSize] = useState(20)
 
-  const fetchNotifications = useCallback(() => getNotifications(page, 20), [page])
+  const fetchNotifications = useCallback(() => getNotifications(page, size), [page, size])
 
-  const { data, loading, lastUpdated, refresh } = usePolling(fetchNotifications, 30000, {
+  const { data, loading, lastUpdated, refresh, error } = usePolling(fetchNotifications, 30000, {
     enabled: isAuthenticated,
   })
 
@@ -82,29 +84,19 @@ export default function NotificationsPage() {
                 </div>
               ))}
 
-              {data && data.totalPages > 1 && (
-                <div className="pagination">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={page === 0}
-                    onClick={() => setPage((p) => p - 1)}
-                  >
-                    Previous
-                  </button>
-                  <span className="last-updated">
-                    Page {page + 1} of {data.totalPages}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={data.last}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    Next
-                  </button>
-                </div>
-              )}
+              <PaginationBar
+                page={page}
+                size={size}
+                totalElements={data?.totalElements ?? 0}
+                totalPages={data?.totalPages ?? 0}
+                loading={loading}
+                error={error ? getApiErrorMessage(error) : null}
+                onPageChange={setPage}
+                onSizeChange={(nextSize) => {
+                  setSize(nextSize)
+                  setPage(0)
+                }}
+              />
             </>
           )}
         </div>

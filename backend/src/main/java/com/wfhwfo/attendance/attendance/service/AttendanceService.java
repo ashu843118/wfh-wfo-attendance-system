@@ -8,13 +8,18 @@ import com.wfhwfo.attendance.attendance.dto.LocationPayload;
 import com.wfhwfo.attendance.attendance.dto.LocationSignalResponse;
 import com.wfhwfo.attendance.attendance.dto.CheckInRequest;
 import com.wfhwfo.attendance.attendance.dto.CheckOutRequest;
+import com.wfhwfo.attendance.attendance.dto.AttendanceSessionResponse;
 import com.wfhwfo.attendance.attendance.entity.AttendanceRecord;
+import com.wfhwfo.attendance.attendance.entity.AttendanceSession;
 import com.wfhwfo.attendance.attendance.repository.AttendanceEventRepository;
 import com.wfhwfo.attendance.attendance.repository.AttendanceRecordRepository;
 import com.wfhwfo.attendance.common.adapter.LockAdapter;
 import com.wfhwfo.attendance.common.dto.PagedResponse;
+import com.wfhwfo.attendance.common.dto.PagedResponseMapper;
 import com.wfhwfo.attendance.common.security.SecurityUtils;
 import com.wfhwfo.attendance.common.security.UserPrincipal;
+import com.wfhwfo.attendance.common.enums.AttendanceMode;
+import com.wfhwfo.attendance.common.enums.CurrentSessionStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -33,6 +38,7 @@ public class AttendanceService {
 
     private final AttendanceRecordRepository attendanceRecordRepository;
     private final AttendanceEventRepository attendanceEventRepository;
+    private final AttendanceSessionService attendanceSessionService;
     private final AttendanceWriteService attendanceWriteService;
     private final LocationSignalService locationSignalService;
     private final LockAdapter lockAdapter;
@@ -112,21 +118,11 @@ public class AttendanceService {
         LocalDate fromDate = from != null ? from : LocalDate.now().minusMonths(1);
         LocalDate toDate = to != null ? to : LocalDate.now();
 
-        Page<AttendanceRecord> page = attendanceRecordRepository.findByEmployeeIdAndAttendanceDateBetween(
+        Page<AttendanceRecord> page = attendanceRecordRepository
+                .findByEmployeeIdAndAttendanceDateBetweenOrderByAttendanceDateDescFirstCheckInTimeDesc(
                 user.getEmployeeId(), fromDate, toDate, pageable);
 
-        List<AttendanceRecordResponse> content = page.getContent().stream()
-                .map(this::toResponse)
-                .toList();
-
-        return PagedResponse.<AttendanceRecordResponse>builder()
-                .content(content)
-                .page(page.getNumber())
-                .size(page.getSize())
-                .totalElements(page.getTotalElements())
-                .totalPages(page.getTotalPages())
-                .last(page.isLast())
-                .build();
+        return PagedResponseMapper.from(page, this::toResponse);
     }
 
     @Transactional(readOnly = true)
@@ -139,28 +135,61 @@ public class AttendanceService {
                 attendanceEventRepository.findByEmployeeIdAndAttendanceDateBetweenOrderByEventTimeDescIdDesc(
                         user.getEmployeeId(), fromDate, toDate, pageable);
 
-        List<AttendanceEventResponse> content = page.getContent().stream()
-                .map(this::toEventResponse)
-                .toList();
-
-        return PagedResponse.<AttendanceEventResponse>builder()
-                .content(content)
-                .page(page.getNumber())
-                .size(page.getSize())
-                .totalElements(page.getTotalElements())
-                .totalPages(page.getTotalPages())
-                .last(page.isLast())
-                .build();
+        return PagedResponseMapper.from(page, this::toEventResponse);
     }
 
     @Transactional(readOnly = true)
-    public List<AttendanceEventResponse> getEventsForDate(LocalDate date) {
+    public PagedResponse<AttendanceEventResponse> getEventsForDate(LocalDate date, Pageable pageable) {
+        UserPrincipal user = SecurityUtils.currentUser();
+        LocalDate targetDate = date != null ? date : LocalDate.now();
+        Page<com.wfhwfo.attendance.attendance.entity.AttendanceEvent> page =
+                attendanceEventRepository.findByEmployeeIdAndAttendanceDateOrderByEventTimeAscIdAsc(
+                        user.getEmployeeId(), targetDate, pageable);
+        return PagedResponseMapper.from(page, this::toEventResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<AttendanceSessionResponse> getSessionsForDate(LocalDate date, Pageable pageable) {
+        UserPrincipal user = SecurityUtils.currentUser();
+        LocalDate targetDate = date != null ? date : LocalDate.now();
+        Page<AttendanceSession> page = attendanceSessionService.findSessionsForDayPage(
+                user.getEmployeeId(), targetDate, pageable);
+        return PagedResponseMapper.from(page, this::toSessionResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AttendanceEventResponse> getEventsForDateList(LocalDate date) {
         UserPrincipal user = SecurityUtils.currentUser();
         LocalDate targetDate = date != null ? date : LocalDate.now();
         return attendanceEventRepository.findByEmployeeIdAndAttendanceDateOrderByEventTimeAscIdAsc(
                         user.getEmployeeId(), targetDate).stream()
                 .map(this::toEventResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AttendanceSessionResponse> getSessionsForDateList(LocalDate date) {
+        UserPrincipal user = SecurityUtils.currentUser();
+        LocalDate targetDate = date != null ? date : LocalDate.now();
+        return attendanceSessionService.findSessionsForDay(user.getEmployeeId(), targetDate).stream()
+                .map(this::toSessionResponse)
+                .toList();
+    }
+
+    private AttendanceSessionResponse toSessionResponse(AttendanceSession session) {
+        return AttendanceSessionResponse.builder()
+                .id(session.getId())
+                .attendanceDate(session.getAttendanceDate())
+                .sessionMode(session.getSessionMode())
+                .checkInEventType(session.getCheckInEventType())
+                .checkInTime(session.getCheckInTime())
+                .checkInTriggerMode(session.getCheckInTriggerMode())
+                .checkOutTime(session.getCheckOutTime())
+                .checkOutEventType(session.getCheckOutEventType())
+                .autoCheckoutEligible(session.isAutoCheckoutEligible())
+                .status(session.getStatus())
+                .matchedOfficeLocationId(session.getMatchedOfficeLocationId())
+                .build();
     }
 
     private AttendanceEventResponse toEventResponse(com.wfhwfo.attendance.attendance.entity.AttendanceEvent event) {
@@ -178,12 +207,20 @@ public class AttendanceService {
     }
 
     private AttendanceRecordResponse toResponse(AttendanceRecord record) {
+        AttendanceMode currentSessionMode = null;
+        if (record.getCurrentSessionStatus() == CurrentSessionStatus.OPEN) {
+            currentSessionMode = attendanceSessionService.findOpenSession(
+                            record.getEmployeeId(), record.getAttendanceDate())
+                    .map(AttendanceSession::getSessionMode)
+                    .orElse(null);
+        }
         return AttendanceRecordResponse.builder()
                 .id(record.getId())
                 .attendanceDate(record.getAttendanceDate())
                 .checkInTime(record.getFirstCheckInTime())
                 .checkOutTime(record.getFinalCheckOutTime())
                 .attendanceMode(record.getAttendanceMode())
+                .currentSessionMode(currentSessionMode)
                 .currentSessionStatus(record.getCurrentSessionStatus())
                 .status(record.getStatus())
                 .processingStatus(record.getProcessingStatus())

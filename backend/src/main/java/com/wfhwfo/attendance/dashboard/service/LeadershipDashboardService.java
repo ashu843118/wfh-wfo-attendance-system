@@ -6,12 +6,16 @@ import com.wfhwfo.attendance.common.adapter.CacheAdapter;
 import com.wfhwfo.attendance.common.enums.AttendanceMode;
 import com.wfhwfo.attendance.common.enums.AttendanceStatus;
 import com.wfhwfo.attendance.common.enums.ProcessingStatus;
+import com.wfhwfo.attendance.common.dto.PagedResponse;
+import com.wfhwfo.attendance.common.dto.PagedResponseMapper;
 import com.wfhwfo.attendance.dashboard.dto.LeadershipDashboardResponse;
 import com.wfhwfo.attendance.common.util.WorkingDayUtils;
 import com.wfhwfo.attendance.employee.repository.EmployeeRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +50,28 @@ public class LeadershipDashboardService {
         return cacheAdapter.get(cacheKey)
                 .flatMap(this::deserialize)
                 .orElseGet(() -> loadAndCacheDashboard(targetDate, cacheKey));
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<LeadershipDashboardResponse.TeamPerformanceRow> getTeamSummary(
+            LocalDate date, Pageable pageable) {
+        LocalDate targetDate = date != null ? date : LocalDate.now();
+        LocalDate from = targetDate.minusDays(30);
+        long workingDays = WorkingDayUtils.countWeekdaysInclusive(from, targetDate);
+        Page<Object[]> page = attendanceRecordRepository.teamAttendancePercentagesWithNamesPage(
+                from, targetDate, workingDays, pageable);
+        return PagedResponseMapper.from(page, this::toTeamPerformanceRow);
+    }
+
+    private LeadershipDashboardResponse.TeamPerformanceRow toTeamPerformanceRow(Object[] row) {
+        Long teamId = (Long) row[0];
+        String teamName = (String) row[1];
+        Double percentage = row[2] != null ? ((Number) row[2]).doubleValue() : 0.0;
+        return LeadershipDashboardResponse.TeamPerformanceRow.builder()
+                .teamId(teamId)
+                .teamName(teamName)
+                .attendancePercentage(percentage)
+                .build();
     }
 
     private LeadershipDashboardResponse loadAndCacheDashboard(LocalDate date, String cacheKey) {

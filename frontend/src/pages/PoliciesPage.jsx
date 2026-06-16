@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react'
 import Topbar from '../components/layout/Topbar'
 import DataTable from '../components/tables/DataTable'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import PaginationBar from '../components/common/PaginationBar'
 import { useToast } from '../components/common/Toast'
 import { getPolicies, createPolicy, updatePolicy, deletePolicy } from '../api/adminApi'
 import { getApiErrorMessage } from '../utils/format'
@@ -21,22 +22,29 @@ const EMPTY_FORM = {
 export default function PoliciesPage() {
   const toast = useToast()
   const [policies, setPolicies] = useState([])
+  const [pagination, setPagination] = useState({ page: 0, size: 20, totalPages: 0, totalElements: 0 })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
 
-  const loadPolicies = useCallback(async () => {
+  const loadPolicies = useCallback(async (page = pagination.page, size = pagination.size) => {
     setLoading(true)
     try {
-      const data = await getPolicies()
-      setPolicies(data || [])
+      const data = await getPolicies({ page, size })
+      setPolicies(data?.content || [])
+      setPagination({
+        page: data?.page ?? page,
+        size: data?.size ?? size,
+        totalPages: data?.totalPages ?? 0,
+        totalElements: data?.totalElements ?? 0,
+      })
     } catch (err) {
       toast.error(getApiErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [pagination.page, pagination.size, toast])
 
   useEffect(() => {
     loadPolicies()
@@ -212,7 +220,18 @@ export default function PoliciesPage() {
           {loading ? (
             <LoadingSpinner message="Loading policies..." />
           ) : (
-            <DataTable columns={columns} data={policies} keyField="id" emptyMessage="No policies configured" />
+            <>
+              <DataTable columns={columns} data={policies} keyField="id" emptyMessage="No policies configured" />
+              <PaginationBar
+                page={pagination.page}
+                size={pagination.size}
+                totalElements={pagination.totalElements}
+                totalPages={pagination.totalPages}
+                loading={loading}
+                onPageChange={(nextPage) => loadPolicies(nextPage, pagination.size)}
+                onSizeChange={(nextSize) => loadPolicies(0, nextSize)}
+              />
+            </>
           )}
         </div>
       </div>

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wfhwfo.attendance.attendance.util.GeoPointUtils;
 import com.wfhwfo.attendance.common.adapter.CacheAdapter;
+import com.wfhwfo.attendance.common.dto.PagedResponse;
+import com.wfhwfo.attendance.common.dto.PagedResponseMapper;
 import com.wfhwfo.attendance.common.exception.BusinessException;
 import com.wfhwfo.attendance.office.dto.OfficeLocationRequest;
 import com.wfhwfo.attendance.office.dto.OfficeLocationResponse;
@@ -11,6 +13,8 @@ import com.wfhwfo.attendance.office.entity.OfficeLocation;
 import com.wfhwfo.attendance.office.repository.OfficeLocationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +47,12 @@ public class OfficeLocationService {
         return officeLocationRepository.findAll().stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<OfficeLocationResponse> list(Pageable pageable) {
+        Page<OfficeLocation> page = officeLocationRepository.findAllByOrderByOfficeNameAsc(pageable);
+        return PagedResponseMapper.from(page, this::toResponse);
     }
 
     @Transactional(readOnly = true)
