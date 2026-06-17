@@ -3,6 +3,7 @@ package com.wfhwfo.attendance.office.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -34,7 +35,9 @@ public class OfficeLocationRequest {
     private Double longitude;
 
     @NotNull(message = "Radius is required")
-    @Min(value = 1, message = "Radius must be at least 1 meter")
+    @Min(value = 50, message = "Radius must be at least 50 meters")
+    @Max(value = 300, message = "Radius must not exceed 300 meters")
+    @Schema(example = "100", description = "Geofence radius in meters (50–300). Default for new offices is 100.")
     private Integer radiusMeters;
 
     private boolean active = true;

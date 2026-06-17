@@ -1,6 +1,7 @@
 package com.wfhwfo.attendance.auth.filter;
 
 import com.wfhwfo.attendance.auth.service.JwtService;
+import com.wfhwfo.attendance.common.logging.LoggingMdc;
 import com.wfhwfo.attendance.common.security.UserPrincipal;
 import com.wfhwfo.attendance.employee.repository.EmployeeRepository;
 import jakarta.servlet.FilterChain;
@@ -46,6 +47,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     .map(employee -> employee.isActive())
                     .orElse(false);
             if (active) {
+                org.slf4j.MDC.put(LoggingMdc.EMPLOYEE_ID, String.valueOf(principal.getEmployeeId()));
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         principal, null, principal.getAuthorities());
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

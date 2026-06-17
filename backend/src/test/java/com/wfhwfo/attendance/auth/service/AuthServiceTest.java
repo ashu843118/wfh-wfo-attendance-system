@@ -58,7 +58,7 @@ class AuthServiceTest {
         when(passwordEncoder.matches("password", "hash")).thenReturn(true);
         when(jwtService.generateToken(any(UserPrincipal.class))).thenReturn("jwt-token");
 
-        var response = authService.login(new LoginRequest("employee@demo.com", "password"));
+        var response = authService.login(new LoginRequest("employee@demo.com", "password"), "127.0.0.1");
 
         assertThat(response.getToken()).isEqualTo("jwt-token");
         assertThat(response.getEmail()).isEqualTo("employee@demo.com");
@@ -70,7 +70,7 @@ class AuthServiceTest {
         when(employeeRepository.findByEmail("employee@demo.com")).thenReturn(Optional.of(employee));
         when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("employee@demo.com", "wrong")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("employee@demo.com", "wrong"), "127.0.0.1"))
                 .isInstanceOf(BadCredentialsException.class);
     }
 
@@ -78,7 +78,7 @@ class AuthServiceTest {
     void loginFailureUnknownUser() {
         when(employeeRepository.findByEmail("unknown@demo.com")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("unknown@demo.com", "password")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("unknown@demo.com", "password"), "127.0.0.1"))
                 .isInstanceOf(BadCredentialsException.class);
     }
 
@@ -87,7 +87,7 @@ class AuthServiceTest {
         employee.setActive(false);
         when(employeeRepository.findByEmail("employee@demo.com")).thenReturn(Optional.of(employee));
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("employee@demo.com", "password")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("employee@demo.com", "password"), "127.0.0.1"))
                 .isInstanceOf(BadCredentialsException.class);
     }
 }

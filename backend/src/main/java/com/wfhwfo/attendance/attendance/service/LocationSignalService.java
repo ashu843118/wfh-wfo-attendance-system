@@ -23,6 +23,7 @@ import com.wfhwfo.attendance.common.enums.ProcessingStatus;
 import com.wfhwfo.attendance.common.security.UserPrincipal;
 import com.wfhwfo.attendance.geofence.dto.GeoFenceMatchResult;
 import com.wfhwfo.attendance.geofence.service.AssignedOfficeGeofenceService;
+import com.wfhwfo.attendance.geofence.service.LocationReliabilityService;
 import com.wfhwfo.attendance.office.dto.EmployeeAssignedOfficeDto;
 import com.wfhwfo.attendance.office.service.EmployeeOfficeCacheService;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +51,7 @@ public class LocationSignalService {
     private final CacheAdapter cacheAdapter;
     private final ObjectMapper objectMapper;
     private final AutoAttendanceProperties autoAttendanceProperties;
+    private final LocationReliabilityService locationReliabilityService;
 
     @Transactional
     public LocationSignalResponse processLocationSignal(UserPrincipal user, LocationPayload location) {
@@ -60,7 +62,14 @@ public class LocationSignalService {
         GeoFenceMatchResult geofenceMatch = assignedOfficeGeofenceService.evaluate(
                 assignedOffice, location.getLatitude(), location.getLongitude());
         boolean insideOffice = geofenceMatch.isWithinFence();
-        boolean locationReliable = isLocationReliable(location, signalTime);
+        boolean locationReliable = locationReliabilityService.isReliable(location, today);
+
+        log.debug(
+                "Location signal received employeeId={} insideOffice={} locationReliable={} accuracy={}",
+                user.getEmployeeId(),
+                insideOffice,
+                locationReliable,
+                location.getAccuracy() != null ? Math.round(location.getAccuracy()) : null);
 
         AutoTrackingSessionState session = loadSession(user.getEmployeeId(), today);
         AttendanceActionResponse actionTaken = null;
@@ -144,7 +153,7 @@ public class LocationSignalService {
                 && !Boolean.TRUE.equals(session.getWfhPromptDismissed());
 
         AutoTrackingStateLabel trackingState = resolveTrackingState(
-                summary, insideOffice, graceRemaining, checkInStableRemaining,
+                summary, insideOffice, locationReliable, graceRemaining, checkInStableRemaining,
                 requiresWfhConfirmation, session.getWfhPromptDismissed(), hasOpenSession);
 
         return LocationSignalResponse.builder()
@@ -182,6 +191,7 @@ public class LocationSignalService {
     private AutoTrackingStateLabel resolveTrackingState(
             AttendanceRecord summary,
             boolean insideOffice,
+            boolean locationReliable,
             Long graceRemaining,
             Long checkInStableRemaining,
             boolean requiresWfhConfirmation,
@@ -229,6 +239,9 @@ public class LocationSignalService {
         if (requiresWfhConfirmation) {
             return AutoTrackingStateLabel.WFH_CONFIRMATION_REQUIRED;
         }
+        if (insideOffice && !locationReliable) {
+            return AutoTrackingStateLabel.POOR_LOCATION_ACCURACY;
+        }
         if (!insideOffice && !requiresWfhConfirmation && Boolean.TRUE.equals(wfhPromptDismissed)) {
             return AutoTrackingStateLabel.OUTSIDE_OFFICE;
         }
@@ -239,17 +252,6 @@ public class LocationSignalService {
             return AutoTrackingStateLabel.INSIDE_OFFICE;
         }
         return AutoTrackingStateLabel.NOT_CHECKED_IN;
-    }
-
-    private boolean isLocationReliable(LocationPayload location, LocalDateTime signalTime) {
-        if (location.getAccuracy() == null
-                || location.getAccuracy() > autoAttendanceProperties.getMaxAccuracyMeters()) {
-            return false;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime reference = location.getTimestamp() != null ? location.getTimestamp() : signalTime;
-        long ageSeconds = Math.abs(Duration.between(reference, now).getSeconds());
-        return ageSeconds <= autoAttendanceProperties.getMaxLocationAgeSeconds();
     }
 
     private AttendanceActionResponse mergeAction(

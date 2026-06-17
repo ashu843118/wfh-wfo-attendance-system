@@ -12,6 +12,7 @@ import com.wfhwfo.attendance.office.dto.OfficeLocationResponse;
 import com.wfhwfo.attendance.office.entity.OfficeLocation;
 import com.wfhwfo.attendance.office.repository.OfficeLocationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,9 +24,11 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class OfficeLocationService {
 
     private static final String ACTIVE_OFFICES_CACHE_KEY = "office:locations:active";
+    public static final int DEFAULT_RADIUS_METERS = 100;
 
     private final OfficeLocationRepository officeLocationRepository;
     private final CacheAdapter cacheAdapter;
@@ -38,7 +41,10 @@ public class OfficeLocationService {
     @Transactional(readOnly = true)
     public List<OfficeLocationResponse> getActiveOffices() {
         return cacheAdapter.get(ACTIVE_OFFICES_CACHE_KEY)
-                .map(this::deserializeOffices)
+                .map(json -> {
+                    log.debug("Office locations cache hit key={}", ACTIVE_OFFICES_CACHE_KEY);
+                    return deserializeOffices(json);
+                })
                 .orElseGet(this::loadAndCacheActiveOffices);
     }
 
@@ -93,9 +99,11 @@ public class OfficeLocationService {
 
     public void evictActiveOfficesCache() {
         cacheAdapter.evict(ACTIVE_OFFICES_CACHE_KEY);
+        log.debug("Office locations cache evicted key={} reason=OFFICE_LOCATIONS_UPDATED", ACTIVE_OFFICES_CACHE_KEY);
     }
 
     private List<OfficeLocationResponse> loadAndCacheActiveOffices() {
+        log.debug("Office locations cache miss key={} loading active offices from DB", ACTIVE_OFFICES_CACHE_KEY);
         List<OfficeLocationResponse> offices = officeLocationRepository.findByActiveTrue().stream()
                 .map(this::toResponse)
                 .toList();
@@ -105,6 +113,7 @@ public class OfficeLocationService {
                     objectMapper.writeValueAsString(offices),
                     Duration.ofSeconds(officeLocationsTtlSeconds)
             );
+            log.debug("Office locations cache put key={} count={}", ACTIVE_OFFICES_CACHE_KEY, offices.size());
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to cache active office locations", ex);
         }
@@ -126,7 +135,7 @@ public class OfficeLocationService {
         office.setLatitude(request.getLatitude());
         office.setLongitude(request.getLongitude());
         office.setGeoPoint(GeoPointUtils.createPoint(request.getLatitude(), request.getLongitude()));
-        office.setRadiusMeters(request.getRadiusMeters());
+        office.setRadiusMeters(request.getRadiusMeters() != null ? request.getRadiusMeters() : DEFAULT_RADIUS_METERS);
         office.setActive(request.isActive());
         return office;
     }

@@ -78,11 +78,19 @@ flowchart TD
 
 Manual check-in uses `POST /api/attendance/check-in` with a location payload.
 
+### Geofence radius
+
+- Each assigned office has a **`radius_meters`** geofence validated via PostGIS.
+- **Default for new offices:** 100 meters (configurable by admin between **50–300** meters).
+- **EY Bengaluru demo office:** 100 meters.
+- Production systems may tune radius based on office campus size, GPS accuracy, and security requirements.
+
 ### Stability and GPS quality
 
 - Auto check-in requires continuous inside readings for `checkInStableSeconds` (default **15** demo).
 - Auto checkout requires continuous outside readings for `checkoutGraceSeconds` (default **60** demo).
-- Readings with poor accuracy (>100 m) or stale timestamps (>120 s) are ignored for auto decisions.
+- Readings with poor accuracy (>100 m) or stale timestamps (>120 s) are ignored for auto decisions — WFO is **not** silently recorded when GPS is unreliable.
+- Manual WFO check-in inside the geofence is also rejected when accuracy is too poor.
 - A **single** outside reading does not trigger auto-checkout.
 
 ---

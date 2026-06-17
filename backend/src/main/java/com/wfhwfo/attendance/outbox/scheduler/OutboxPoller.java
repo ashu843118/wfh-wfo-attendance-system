@@ -44,11 +44,24 @@ public class OutboxPoller {
         outboxService.resetStaleProcessingEvents();
 
         List<OutboxEvent> pendingEvents = outboxEventRepository.findPendingEvents(batchSize);
+        if (pendingEvents.isEmpty()) {
+            return;
+        }
+
+        log.debug("Outbox polling started pendingEvents={}", pendingEvents.size());
+        int claimedCount = 0;
+
         for (OutboxEvent event : pendingEvents) {
             int claimed = outboxEventRepository.claimEvent(event.getId());
             if (claimed == 1) {
+                claimedCount++;
+                log.info("Outbox event claimed eventId={} eventType={}", event.getId(), event.getEventType());
                 outboxTaskExecutor.execute(() -> processEvent(event.getId()));
             }
+        }
+
+        if (claimedCount > 0) {
+            log.debug("Outbox polling completed claimedEvents={}", claimedCount);
         }
     }
 
@@ -65,11 +78,15 @@ public class OutboxPoller {
             }
             if (!outboxService.markProcessed(eventId)) {
                 log.warn("Outbox event {} was not in PROCESSING state when marking processed", eventId);
+            } else {
+                log.info("Outbox event processed eventId={} eventType={}", eventId, event.getEventType());
             }
         } catch (Exception ex) {
-            log.error("Failed to process outbox event {}", eventId, ex);
+            log.error("Outbox event failed eventId={} eventType={} reason={}", eventId, event.getEventType(), ex.getMessage(), ex);
             if (!outboxService.markFailed(eventId, ex.getMessage())) {
                 log.warn("Outbox event {} was not in PROCESSING state when marking failed", eventId);
+            } else {
+                log.warn("Outbox event retry scheduled eventId={} retryCount={}", eventId, event.getRetryCount() + 1);
             }
         }
     }

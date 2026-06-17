@@ -20,6 +20,7 @@ import com.wfhwfo.attendance.common.exception.BusinessException;
 import com.wfhwfo.attendance.common.security.UserPrincipal;
 import com.wfhwfo.attendance.geofence.dto.GeoFenceMatchResult;
 import com.wfhwfo.attendance.geofence.service.AssignedOfficeGeofenceService;
+import com.wfhwfo.attendance.geofence.service.LocationReliabilityService;
 import com.wfhwfo.attendance.office.dto.EmployeeAssignedOfficeDto;
 import com.wfhwfo.attendance.office.service.EmployeeOfficeCacheService;
 import com.wfhwfo.attendance.outbox.service.OutboxService;
@@ -59,6 +60,8 @@ class AttendanceWriteServiceTest {
     private EmployeeOfficeCacheService employeeOfficeCacheService;
     @Mock
     private AssignedOfficeGeofenceService assignedOfficeGeofenceService;
+    @Mock
+    private LocationReliabilityService locationReliabilityService;
 
     @InjectMocks
     private AttendanceWriteService attendanceWriteService;
@@ -87,6 +90,7 @@ class AttendanceWriteServiceTest {
         when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
         when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
                 GeoFenceMatchResult.builder().officeId(1L).withinFence(true).distanceMeters(10.0).build());
+        when(locationReliabilityService.isReliable(any(LocationPayload.class), eq(today))).thenReturn(true);
         when(attendanceSessionService.findOpenSession(1L, today)).thenReturn(Optional.empty());
         when(attendanceRecordRepository.findByEmployeeIdAndAttendanceDate(1L, today)).thenReturn(Optional.empty());
         when(attendanceRecordRepository.save(any(AttendanceRecord.class))).thenAnswer(inv -> {
@@ -181,5 +185,28 @@ class AttendanceWriteServiceTest {
 
         assertThat(response.getEventId()).isEqualTo(201L);
         verify(attendanceSessionService).openSession(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void rejectsOfficeCheckInWhenLocationAccuracyIsPoor() {
+        LocalDate today = LocalDate.now();
+        when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
+        when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
+                GeoFenceMatchResult.builder().officeId(1L).withinFence(true).distanceMeters(10.0).build());
+        when(locationReliabilityService.isReliable(any(LocationPayload.class), eq(today))).thenReturn(false);
+        when(attendanceSessionService.findOpenSession(1L, today)).thenReturn(Optional.empty());
+
+        CheckInRequest request = CheckInRequest.builder()
+                .location(LocationPayload.builder()
+                        .latitude(18.5912)
+                        .longitude(73.7389)
+                        .accuracy(250.0)
+                        .build())
+                .source("PWA")
+                .build();
+
+        assertThatThrownBy(() -> attendanceWriteService.checkIn(user, today, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", "LOCATION_ACCURACY_POOR");
     }
 }

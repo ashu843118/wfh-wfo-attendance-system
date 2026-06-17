@@ -19,6 +19,10 @@ export function getLoginErrorMessage(error) {
   const status = error?.response?.status
   const errorCode = error?.response?.data?.errorCode
 
+  if (status === 429 || errorCode === 'AUTH_RATE_LIMITED') {
+    return 'Too many login attempts. Please try again later.'
+  }
+
   if (status === 401 || errorCode === 'INVALID_CREDENTIALS' || errorCode === 'AUTH_INVALID_CREDENTIALS') {
     return 'Invalid email or password.'
   }

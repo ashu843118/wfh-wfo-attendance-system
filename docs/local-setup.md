@@ -66,7 +66,7 @@ All seeded users share the password **`password`**.
 | Address | Campus 1C, Ecospace Business Park, Bellandur, Outer Ring Road, Bengaluru, Karnataka 560103 |
 | Latitude | 12.9262 |
 | Longitude | 77.6811 |
-| Geofence radius | 500 meters |
+| Geofence radius | 100 meters (EY Bengaluru demo office) |
 
 ---
 
@@ -142,7 +142,7 @@ If your GPS is outside the EY Bengaluru geofence, the **WFH confirmation prompt 
 
 Options for local WFO testing:
 
-1. **Allow location** and physically move inside the geofence (500 m radius around 12.9262, 77.6811), or
+1. **Allow location** and physically move inside the geofence (**100 m** radius around 12.9262, 77.6811 for EY Bengaluru), or
 2. Log in as **admin@demo.com** → edit the assigned office lat/lng/radius to match your area, or
 3. Reassign the employee to a nearer demo office.
 

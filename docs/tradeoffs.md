@@ -159,7 +159,20 @@ Previously considered continuous tracking for all open sessions — rejected in 
 
 ---
 
-## 15. UTC Storage vs Local Display
+## 15. Office Geofence Radius (50–300 m)
+
+| Choice | Rationale |
+|--------|-----------|
+| **100 m default (MVP)** | Narrow enough for office-level validation; wide enough for typical browser GPS inaccuracy inside buildings |
+| **50 m minimum** | Prevents unrealistically tight fences that would false-negative most mobile GPS readings |
+| **300 m maximum** | Prevents overly broad fences that include nearby roads, cafés, or parking areas |
+| **Admin-configurable** | Different campuses need different radii; production can tune per office |
+
+The **EY Bengaluru - Ecospace** demo office uses **100 meters**. A 500 m default was too broad for meaningful office attendance validation.
+
+---
+
+## 16. UTC Storage vs Local Display
 
 | Choice | Rationale |
 |--------|-----------|

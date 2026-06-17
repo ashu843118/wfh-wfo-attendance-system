@@ -16,6 +16,7 @@ export const TRACKING_STATE_LABELS = {
   CHECKED_IN_WFH: 'Checked in as WFH',
   AUTO_CHECKOUT_MONITORING_ACTIVE: 'Auto-checkout monitoring active',
   WFH_CONFIRMATION_REQUIRED: 'Outside office — WFH confirmation required',
+  POOR_LOCATION_ACCURACY: 'GPS accuracy too poor — waiting for a reliable location',
   NOT_CHECKED_IN: 'Not checked in',
   AUTO_CHECKOUT_PENDING: 'Outside office — auto checkout pending',
   AUTO_CHECKED_OUT: 'Auto checked-out',

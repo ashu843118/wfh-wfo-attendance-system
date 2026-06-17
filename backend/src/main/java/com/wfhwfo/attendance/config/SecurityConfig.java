@@ -3,6 +3,7 @@ package com.wfhwfo.attendance.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wfhwfo.attendance.common.dto.ApiResponse;
 import com.wfhwfo.attendance.auth.filter.JwtAuthenticationFilter;
+import com.wfhwfo.attendance.common.filter.RequestIdFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -24,6 +25,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    private final RequestIdFilter requestIdFilter;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ObjectMapper objectMapper;
 
@@ -58,7 +60,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/notifications/**").authenticated()
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(requestIdFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

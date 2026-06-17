@@ -46,7 +46,7 @@ app:
   auth:
     login-rate-limit:
       max-attempts: 5
-      window-minutes: 15
+      window-minutes: 5
   demo:
     seed:
       enabled: false
@@ -70,5 +70,8 @@ springdoc:
 
 logging:
   level:
+    root: INFO
     com.wfhwfo.attendance: INFO
+    com.wfhwfo.attendance.office.service: DEBUG
+    org.springframework.security: WARN
     org.hibernate.SQL: WARN

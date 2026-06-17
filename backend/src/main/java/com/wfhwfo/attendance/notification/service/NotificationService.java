@@ -12,6 +12,7 @@ import com.wfhwfo.attendance.outlier.repository.AttendanceOutlierRepository;
 import com.wfhwfo.attendance.common.dto.PagedResponse;
 import com.wfhwfo.attendance.common.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
@@ -77,6 +79,7 @@ public class NotificationService {
                 .severity(severity)
                 .read(false)
                 .build());
+        log.info("Notification created recipientId={} type={} relatedEmployeeId={}", recipientId, type, relatedEmployeeId);
     }
 
     @Transactional
@@ -113,6 +116,11 @@ public class NotificationService {
                     .read(false)
                     .build();
             notificationRepository.save(notification);
+            log.info(
+                    "Notification created recipientId={} type={} relatedEmployeeId={}",
+                    managerId,
+                    outlier.getOutlierType().name(),
+                    employeeId);
         }
     }
 

@@ -37,6 +37,7 @@ public class EmployeeOfficeCacheService {
         Optional<String> cached = cacheAdapter.get(cacheKey);
         if (cached.isPresent()) {
             try {
+                log.debug("Office cache hit employeeId={} key={}", employeeId, cacheKey);
                 return objectMapper.readValue(cached.get(), EmployeeAssignedOfficeDto.class);
             } catch (JsonProcessingException ex) {
                 log.warn("Failed to parse cached office for employee {}", employeeId);
@@ -44,6 +45,7 @@ public class EmployeeOfficeCacheService {
             }
         }
 
+        log.debug("Office cache miss employeeId={} loading assigned office from DB", employeeId);
         EmployeeAssignedOfficeDto office = employeeRepository.findAssignedOfficeByEmployeeId(employeeId)
                 .map(this::toDto)
                 .orElseThrow(() -> new BusinessException(
@@ -68,15 +70,24 @@ public class EmployeeOfficeCacheService {
 
     public void evictEmployeeOfficeCache(Long employeeId) {
         cacheAdapter.evict(cacheKey(employeeId));
+        log.debug("Office cache evicted employeeId={} key={} reason=EMPLOYEE_OFFICE_UPDATED", employeeId, cacheKey(employeeId));
     }
 
     public void evictAllEmployeeOfficeCaches() {
         cacheAdapter.evictByPattern(EMPLOYEE_OFFICE_PATTERN);
+        log.debug("Office cache evicted pattern={} reason=BULK_INVALIDATION", EMPLOYEE_OFFICE_PATTERN);
     }
 
     public void evictEmployeesForOffice(Long officeLocationId) {
         employeeRepository.findEmployeeIdsByAssignedOfficeLocationId(officeLocationId)
-                .forEach(this::evictEmployeeOfficeCache);
+                .forEach(employeeId -> {
+                    cacheAdapter.evict(cacheKey(employeeId));
+                    log.debug(
+                            "Office cache evicted employeeId={} key={} reason=OFFICE_LOCATION_UPDATED officeId={}",
+                            employeeId,
+                            cacheKey(employeeId),
+                            officeLocationId);
+                });
     }
 
     private void cacheOffice(Long employeeId, EmployeeAssignedOfficeDto office) {
@@ -85,6 +96,7 @@ public class EmployeeOfficeCacheService {
                     cacheKey(employeeId),
                     objectMapper.writeValueAsString(office),
                     Duration.ofSeconds(employeeOfficeTtlSeconds));
+            log.debug("Office cache put employeeId={} key={} officeId={}", employeeId, cacheKey(employeeId), office.getOfficeLocationId());
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("Failed to cache assigned office", ex);
         }

@@ -166,7 +166,7 @@ All seeded users share the password **`password`**.
 | Address | Campus 1C, Ecospace Business Park, Bellandur, Outer Ring Road, Bengaluru, Karnataka 560103 |
 | Latitude | 12.9262 |
 | Longitude | 77.6811 |
-| Geofence radius | 500 meters |
+| Geofence radius | 100 meters |
 
 Additional demo employees (~100 total) are seeded across five teams. See `backend/src/main/resources/demo-data/`.
 
@@ -224,11 +224,44 @@ Dashboards read from **`attendance_records`** daily summaries. Drill-down uses p
 
 ## Security and Privacy Notes
 
+### Authentication and credentials
+
+- Login accepts **email and password in the POST request body only** — credentials in query parameters are rejected.
+- Passwords are **never logged** on the backend and are **never printed** to the browser console.
+- Passwords are stored as **BCrypt hashes** in the database (`password_hash` column); demo seeded users use a BCrypt hash of the shared demo password.
+- Invalid email or password returns **401** with a generic message: *Invalid email or password.* — the API does not reveal whether an email exists.
+- **Redis-based rate limiting:** max **5 failed attempts per email or client IP within 5 minutes** → **429** *Too many login attempts. Please try again later.*
+- JWT tokens have a configured expiration (`app.jwt.expiration-ms`, default 24 hours).
+
+### Geofence radius
+
+- Office geofence **`radius_meters`** is configurable by admin (**50–300 m**, default **100 m**).
+- **EY Bengaluru - Ecospace** demo office uses **100 meters**.
+- Production deployments may tune radius based on campus size, GPS accuracy, and security requirements.
+
+### Transport and production deployment
+
+- **Local demo** runs over **HTTP on localhost** for easy evaluation.
+- **Production deployment must use HTTPS/TLS** so credentials and JWTs are protected in transit.
+- Passwords are protected at rest using **BCrypt** and in transit using **HTTPS**.
+
+### Other privacy notes
+
 - **JWT authentication** with role-based access control (EMPLOYEE, MANAGER, LEADERSHIP, ADMIN).
 - Location is used **only for attendance classification** while the app is open.
 - **No background location tracking** when the browser tab or PWA is closed.
 - Browser location can be spoofed; backend validates geofence and audit/outlier rules flag suspicious patterns.
 - Demo JWT auth — production would use enterprise SSO (OIDC).
+
+### Application logging and audit
+
+- Backend uses **SLF4J** with structured log messages at appropriate levels (`INFO` business events, `WARN` validation/security, `ERROR` failures, `DEBUG` cache internals).
+- Each HTTP request receives a **correlation ID** via `X-Request-Id` (client-supplied or server-generated); it is stored in MDC and echoed in the response header for log tracing.
+- **Never logged:** passwords, JWT tokens, `Authorization` headers, full login bodies, or repeated raw GPS coordinates at `INFO`.
+- **Geofence logs** include `employeeId`, `officeId`, distance, accuracy, and inside/outside result — exact lat/lng is persisted in `attendance_events` for audit, not echoed in routine application logs.
+- **Redis cache** hit/miss/put/evict events are logged at `DEBUG` under `com.wfhwfo.attendance.office.service`.
+- Attendance actions, auth events, outbox processing, EOD close, and outlier detection produce `INFO`/`WARN` logs suitable for operational monitoring.
+- The frontend does not `console.log` passwords, tokens, or full location payloads; user-facing errors use toast messages.
 
 ---
 

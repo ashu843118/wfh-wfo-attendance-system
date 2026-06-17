@@ -13,8 +13,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,33 +33,58 @@ class LoginRateLimitServiceTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(loginRateLimitService, "maxAttempts", 5);
-        ReflectionTestUtils.setField(loginRateLimitService, "windowMinutes", 15L);
+        ReflectionTestUtils.setField(loginRateLimitService, "windowMinutes", 5L);
     }
 
     @Test
-    void blocksWhenAttemptsExceeded() {
+    void blocksWhenEmailAttemptsExceeded() {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("auth:login:attempts:employee@demo.com")).thenReturn("5");
+        when(valueOperations.get("auth:login:attempts:email:employee@demo.com")).thenReturn("5");
 
-        assertThatThrownBy(() -> loginRateLimitService.checkAllowed("employee@demo.com"))
+        assertThatThrownBy(() -> loginRateLimitService.checkAllowed("employee@demo.com", "127.0.0.1"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Too many login attempts");
+                .hasMessage("Too many login attempts. Please try again later.");
     }
 
     @Test
-    void recordsFailedAttemptWithExpiry() {
+    void blocksWhenIpAttemptsExceeded() {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.increment("auth:login:attempts:employee@demo.com")).thenReturn(1L);
+        when(valueOperations.get("auth:login:attempts:email:employee@demo.com")).thenReturn(null);
+        when(valueOperations.get("auth:login:attempts:ip:127.0.0.1")).thenReturn("5");
 
-        loginRateLimitService.recordFailedAttempt("employee@demo.com");
-
-        verify(stringRedisTemplate).expire(eq("auth:login:attempts:employee@demo.com"), eq(Duration.ofMinutes(15)));
+        assertThatThrownBy(() -> loginRateLimitService.checkAllowed("employee@demo.com", "127.0.0.1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Too many login attempts. Please try again later.");
     }
 
     @Test
-    void resetsAttemptsOnSuccess() {
+    void recordsFailedAttemptWithExpiryForEmailAndIp() {
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.increment("auth:login:attempts:email:employee@demo.com")).thenReturn(1L);
+        when(valueOperations.increment("auth:login:attempts:ip:127.0.0.1")).thenReturn(1L);
+
+        loginRateLimitService.recordFailedAttempt("employee@demo.com", "127.0.0.1");
+
+        verify(stringRedisTemplate).expire(
+                eq("auth:login:attempts:email:employee@demo.com"), eq(Duration.ofMinutes(5)));
+        verify(stringRedisTemplate).expire(
+                eq("auth:login:attempts:ip:127.0.0.1"), eq(Duration.ofMinutes(5)));
+    }
+
+    @Test
+    void resetsEmailAttemptsOnSuccess() {
         loginRateLimitService.resetAttempts("employee@demo.com");
 
-        verify(stringRedisTemplate).delete("auth:login:attempts:employee@demo.com");
+        verify(stringRedisTemplate).delete("auth:login:attempts:email:employee@demo.com");
+    }
+
+    @Test
+    void allowsCheckWhenUnderLimit() {
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("auth:login:attempts:email:employee@demo.com")).thenReturn("2");
+        when(valueOperations.get("auth:login:attempts:ip:127.0.0.1")).thenReturn("1");
+
+        assertThatCode(() -> loginRateLimitService.checkAllowed("employee@demo.com", "127.0.0.1"))
+                .doesNotThrowAnyException();
     }
 }

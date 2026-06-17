@@ -27,7 +27,11 @@ Authorization: Bearer <JWT>
 
 Errors include `success: false`, a `message`, optional `errorCode`, and optional field-level validation details in `data`.
 
-Login failures return **401** with message `"Invalid email or password."` (not a generic 500).
+Login failures return **401** with message `"Invalid email or password."` (does not reveal whether the email exists).
+
+Rate limiting: max **5 failed attempts per email or client IP within 5 minutes** → **429** with `"Too many login attempts. Please try again later."`
+
+Credentials must be sent in the **POST request body only**; query-string credentials are rejected with **400**.
 
 ### `PagedResponse<T>`
 
@@ -259,7 +263,7 @@ Base path: `/api/admin`
 | PUT | `/api/admin/office-locations/{id}` | Update office |
 | DELETE | `/api/admin/office-locations/{id}` | Delete office |
 
-**Office fields:** `officeName`, `address`, `latitude`, `longitude`, `radiusMeters`, `active`.
+**Office fields:** `officeName`, `address`, `latitude`, `longitude`, `radiusMeters` (50–300, default 100), `active`.
 
 Updates invalidate Redis `office:employee:{id}` cache entries for affected employees.
 

@@ -9,6 +9,7 @@ import com.wfhwfo.attendance.common.security.UserPrincipal;
 import com.wfhwfo.attendance.employee.entity.Employee;
 import com.wfhwfo.attendance.employee.repository.EmployeeRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthService {
 
     private final EmployeeRepository employeeRepository;
@@ -24,18 +26,22 @@ public class AuthService {
     private final LoginRateLimitService loginRateLimitService;
 
     @Transactional(readOnly = true)
-    public LoginResponse login(LoginRequest request) {
-        loginRateLimitService.checkAllowed(request.getEmail());
+    public LoginResponse login(LoginRequest request, String clientIp) {
+        log.info("Login attempt email={}", request.getEmail());
+
+        loginRateLimitService.checkAllowed(request.getEmail(), clientIp);
 
         Employee employee = employeeRepository.findByEmail(request.getEmail())
                 .filter(Employee::isActive)
                 .orElseThrow(() -> {
-                    loginRateLimitService.recordFailedAttempt(request.getEmail());
+                    loginRateLimitService.recordFailedAttempt(request.getEmail(), clientIp);
+                    log.warn("Login failed email={} reason=INVALID_CREDENTIALS", request.getEmail());
                     return new BadCredentialsException("Invalid email or password");
                 });
 
         if (!passwordEncoder.matches(request.getPassword(), employee.getPasswordHash())) {
-            loginRateLimitService.recordFailedAttempt(request.getEmail());
+            loginRateLimitService.recordFailedAttempt(request.getEmail(), clientIp);
+            log.warn("Login failed email={} reason=INVALID_CREDENTIALS", request.getEmail());
             throw new BadCredentialsException("Invalid email or password");
         }
 
@@ -43,6 +49,7 @@ public class AuthService {
 
         UserPrincipal principal = toPrincipal(employee);
         String token = jwtService.generateToken(principal);
+        log.info("Login success userId={} role={}", employee.getId(), employee.getRole());
         return toLoginResponse(token, employee);
     }
 

@@ -50,8 +50,10 @@ public class DayCloseScheduler {
             return;
         }
 
+        log.info("EOD close job started date={} candidateRecords={}", targetDate, openRecords.size());
+
         LocalDateTime closeTime = targetDate.atTime(parseCloseTime());
-        log.info("Closing {} open attendance records for {}", openRecords.size(), targetDate);
+        int closedRecords = 0;
 
         for (AttendanceRecord record : openRecords) {
             if (attendanceEventRepository.existsByEmployeeIdAndAttendanceDateAndEventType(
@@ -61,6 +63,7 @@ public class DayCloseScheduler {
 
             attendanceWriteService.recordSystemDayClose(record, closeTime, "Automatic end-of-day close");
             createMissingCheckoutOutlier(record);
+            closedRecords++;
 
             Employee employee = employeeRepository.findById(record.getEmployeeId()).orElse(null);
             Long managerId = employee != null ? employee.getManagerId() : null;
@@ -68,6 +71,8 @@ public class DayCloseScheduler {
             outlierDetectionService.detectForEmployee(
                     record.getEmployeeId(), record.getTeamId(), record.getId());
         }
+
+        log.info("EOD close completed date={} closedRecords={}", targetDate, closedRecords);
     }
 
     private void createMissingCheckoutOutlier(AttendanceRecord record) {

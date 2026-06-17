@@ -22,11 +22,14 @@ import com.wfhwfo.attendance.common.exception.BusinessException;
 import com.wfhwfo.attendance.common.security.UserPrincipal;
 import com.wfhwfo.attendance.geofence.dto.GeoFenceMatchResult;
 import com.wfhwfo.attendance.geofence.service.AssignedOfficeGeofenceService;
+import com.wfhwfo.attendance.geofence.service.GeofenceLoggingSupport;
+import com.wfhwfo.attendance.geofence.service.LocationReliabilityService;
 import com.wfhwfo.attendance.office.dto.EmployeeAssignedOfficeDto;
 import com.wfhwfo.attendance.office.service.EmployeeOfficeCacheService;
 import com.wfhwfo.attendance.outbox.dto.OutboxEventPayload;
 import com.wfhwfo.attendance.outbox.service.OutboxService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +39,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AttendanceWriteService {
 
     private final AttendanceRecordRepository attendanceRecordRepository;
@@ -45,20 +49,24 @@ public class AttendanceWriteService {
     private final OutboxService outboxService;
     private final EmployeeOfficeCacheService employeeOfficeCacheService;
     private final AssignedOfficeGeofenceService assignedOfficeGeofenceService;
+    private final LocationReliabilityService locationReliabilityService;
 
     @Transactional
     public AttendanceActionResponse checkIn(UserPrincipal user, LocalDate today, CheckInRequest request) {
+        log.info("Check-in request received employeeId={} mode=MANUAL", user.getEmployeeId());
         assertNoOpenSession(user.getEmployeeId(), today);
-        GeoFenceMatchResult match = resolveGeofenceMatch(user.getEmployeeId(), request.getLocation());
+        GeoFenceMatchResult match = resolveGeofenceMatch(user.getEmployeeId(), request.getLocation(), "MANUAL");
+        assertReliableLocationForOfficeCheckIn(today, request.getLocation(), match);
         return recordManualEvent(
                 user, today, AttendanceEventType.MANUAL_CHECK_IN, request.getLocation(), request.getSource(), match);
     }
 
     @Transactional
     public AttendanceActionResponse confirmWfhCheckIn(UserPrincipal user, LocalDate today, CheckInRequest request) {
+        log.info("Check-in request received employeeId={} mode=WFH", user.getEmployeeId());
         assertNoOpenSession(user.getEmployeeId(), today);
 
-        GeoFenceMatchResult match = resolveGeofenceMatch(user.getEmployeeId(), request.getLocation());
+        GeoFenceMatchResult match = resolveGeofenceMatch(user.getEmployeeId(), request.getLocation(), "MANUAL");
         if (match.isWithinFence()) {
             throw new BusinessException(
                     "Cannot confirm WFH while inside assigned office geofence",
@@ -79,12 +87,13 @@ public class AttendanceWriteService {
 
     @Transactional
     public AttendanceActionResponse checkOut(UserPrincipal user, LocalDate today, CheckOutRequest request) {
+        log.info("Check-out request received employeeId={} source=MANUAL", user.getEmployeeId());
         AttendanceSession openSession = requireOpenSession(user.getEmployeeId(), today);
         AttendanceRecord summary = attendanceRecordRepository
                 .findByEmployeeIdAndAttendanceDate(user.getEmployeeId(), today)
                 .orElseThrow(() -> new BusinessException("No check-in found for today", "ATTENDANCE_NO_CHECKIN"));
 
-        GeoFenceMatchResult match = resolveGeofenceMatch(user.getEmployeeId(), request.getLocation());
+        GeoFenceMatchResult match = resolveGeofenceMatch(user.getEmployeeId(), request.getLocation(), "MANUAL");
         String source = request.getSource() != null ? request.getSource() : "PWA";
         return recordEvent(user, today, summary, AttendanceEventType.MANUAL_CHECK_OUT, AttendanceTriggerMode.MANUAL,
                 request.getLocation(), source, match, openSession);
@@ -99,6 +108,18 @@ public class AttendanceWriteService {
             LocationPayload location,
             String source,
             GeoFenceMatchResult geofenceMatch) {
+        if (isCheckInLikeEvent(eventType)) {
+            log.info("Check-in request received employeeId={} mode=AUTO source={}", user.getEmployeeId(), logSource(triggerMode));
+        } else if (isCheckOutLikeEvent(eventType)) {
+            log.info("Check-out request received employeeId={} source={}", user.getEmployeeId(), logSource(triggerMode));
+        }
+
+        if (geofenceMatch != null) {
+            EmployeeAssignedOfficeDto office = employeeOfficeCacheService.getAssignedOffice(user.getEmployeeId());
+            GeofenceLoggingSupport.logEvaluation(
+                    log, user.getEmployeeId(), office.getOfficeLocationId(), geofenceMatch, location.getAccuracy(), logSource(triggerMode));
+        }
+
         AttendanceRecord summary = getOrCreateSummary(user, today);
 
         if (isCheckInLikeEvent(eventType)) {
@@ -125,7 +146,7 @@ public class AttendanceWriteService {
             throw new BusinessException("Auto endpoint supports geofence events only", "ATTENDANCE_INVALID_EVENT_TYPE");
         }
 
-        GeoFenceMatchResult match = resolveGeofenceMatch(user.getEmployeeId(), request.getLocation());
+        GeoFenceMatchResult match = resolveGeofenceMatch(user.getEmployeeId(), request.getLocation(), "AUTO");
         AttendanceRecord summary = getOrCreateSummary(user, today);
         String source = request.getSource() != null ? request.getSource() : "AUTO_PWA";
         return recordEvent(user, today, summary, eventType, AttendanceTriggerMode.AUTO, request.getLocation(), source, match, null);
@@ -170,6 +191,12 @@ public class AttendanceWriteService {
         AttendanceRecord savedSummary = attendanceRecordRepository.save(summary);
         savedEvent.setAttendanceRecordId(savedSummary.getId());
         attendanceEventRepository.save(savedEvent);
+
+        log.info(
+                "EOD system close completed employeeId={} date={} attendanceRecordId={}",
+                summary.getEmployeeId(),
+                summary.getAttendanceDate(),
+                savedSummary.getId());
 
         return buildActionResponse(savedSummary, closeTime, savedEvent.getId());
     }
@@ -223,6 +250,10 @@ public class AttendanceWriteService {
             String source,
             GeoFenceMatchResult geofenceMatch,
             AttendanceSession openSessionForCheckout) {
+
+        if (isCheckInLikeEvent(eventType) && summary.getFirstCheckInTime() != null) {
+            log.info("Same-day re-check-in allowed employeeId={} date={}", user.getEmployeeId(), today);
+        }
 
         LocalDateTime recordedAt = resolveRecordedAt(today, location);
         Long matchedOfficeId = geofenceMatch != null && geofenceMatch.isWithinFence()
@@ -298,7 +329,43 @@ public class AttendanceWriteService {
             enqueueClassification(user, savedSummary, savedEvent, outboxAction);
         }
 
+        logAttendanceAction(user.getEmployeeId(), eventType, triggerMode, linkedSession);
+
         return buildActionResponse(savedSummary, recordedAt, savedEvent.getId());
+    }
+
+    private void logAttendanceAction(
+            Long employeeId,
+            AttendanceEventType eventType,
+            AttendanceTriggerMode triggerMode,
+            AttendanceSession linkedSession) {
+        String sourceLabel = logSource(triggerMode);
+        if (isCheckInLikeEvent(eventType)) {
+            AttendanceMode mode = linkedSession != null ? linkedSession.getSessionMode() : null;
+            if (eventType == AttendanceEventType.AUTO_CHECK_IN) {
+                log.info("Auto WFO check-in completed employeeId={} mode=WFO source={}", employeeId, sourceLabel);
+            } else if (eventType == AttendanceEventType.WFH_CONFIRMED_CHECK_IN) {
+                log.info("WFH confirmed check-in completed employeeId={} mode=WFH source={}", employeeId, sourceLabel);
+            } else if (eventType == AttendanceEventType.MANUAL_CHECK_IN) {
+                log.info("Manual check-in completed employeeId={} mode={} source={}", employeeId, mode, sourceLabel);
+            } else {
+                log.info("Check-in completed employeeId={} mode={} source={}", employeeId, mode, sourceLabel);
+            }
+        } else if (isCheckOutLikeEvent(eventType)) {
+            if (eventType == AttendanceEventType.AUTO_CHECK_OUT) {
+                log.info("Auto checkout completed employeeId={} source={}", employeeId, sourceLabel);
+            } else {
+                log.info("Check-out completed employeeId={} source={}", employeeId, sourceLabel);
+            }
+        }
+    }
+
+    private String logSource(AttendanceTriggerMode triggerMode) {
+        return switch (triggerMode) {
+            case AUTO -> "AUTO";
+            case SYSTEM -> "SYSTEM";
+            default -> "MANUAL";
+        };
     }
 
     private void refreshSummary(AttendanceRecord summary) {
@@ -311,13 +378,17 @@ public class AttendanceWriteService {
 
     private void assertNoOpenSession(Long employeeId, LocalDate today) {
         if (attendanceSessionService.findOpenSession(employeeId, today).isPresent()) {
+            log.warn("Duplicate check-in blocked employeeId={} date={}", employeeId, today);
             throw new BusinessException("An active attendance session already exists", "ATTENDANCE_SESSION_ALREADY_OPEN");
         }
     }
 
     private AttendanceSession requireOpenSession(Long employeeId, LocalDate today) {
         return attendanceSessionService.findOpenSession(employeeId, today)
-                .orElseThrow(() -> new BusinessException("No active attendance session", "ATTENDANCE_NO_OPEN_SESSION"));
+                .orElseThrow(() -> {
+                    log.warn("Checkout rejected no active session employeeId={} date={}", employeeId, today);
+                    return new BusinessException("No active attendance session", "ATTENDANCE_NO_OPEN_SESSION");
+                });
     }
 
     private boolean isCheckInLikeEvent(AttendanceEventType eventType) {
@@ -334,9 +405,25 @@ public class AttendanceWriteService {
                 || eventType == AttendanceEventType.SYSTEM_DAY_CLOSE;
     }
 
-    private GeoFenceMatchResult resolveGeofenceMatch(Long employeeId, LocationPayload location) {
+    private GeoFenceMatchResult resolveGeofenceMatch(Long employeeId, LocationPayload location, String source) {
         EmployeeAssignedOfficeDto office = employeeOfficeCacheService.getAssignedOffice(employeeId);
-        return assignedOfficeGeofenceService.evaluate(office, location.getLatitude(), location.getLongitude());
+        GeoFenceMatchResult result = assignedOfficeGeofenceService.evaluate(
+                office, location.getLatitude(), location.getLongitude());
+        GeofenceLoggingSupport.logEvaluation(
+                log, employeeId, office.getOfficeLocationId(), result, location.getAccuracy(), source);
+        return result;
+    }
+
+    private void assertReliableLocationForOfficeCheckIn(
+            LocalDate today,
+            LocationPayload location,
+            GeoFenceMatchResult geofenceMatch) {
+        if (geofenceMatch.isWithinFence()
+                && !locationReliabilityService.isReliable(location, today)) {
+            throw new BusinessException(
+                    "Location accuracy is too poor for office check-in. Please try again with a better GPS signal.",
+                    "LOCATION_ACCURACY_POOR");
+        }
     }
 
     private AttendanceRecord getOrCreateSummary(UserPrincipal user, LocalDate today) {

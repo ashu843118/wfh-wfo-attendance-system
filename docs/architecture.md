@@ -117,7 +117,7 @@ Dashboards read **`attendance_records`** for KPIs and trends. Drill-down uses **
 
 - Each employee has **exactly one assigned office**: `employees.assigned_office_location_id` → `office_locations.id`.
 - All geofence validation uses **only** the assigned office.
-- Demo: `employee@demo.com` → **EY Bengaluru - Ecospace** (12.9262, 77.6811, 500 m radius).
+- Demo: `employee@demo.com` → **EY Bengaluru - Ecospace** (12.9262, 77.6811, **100 m** geofence radius).
 
 ### Future extension
 
@@ -164,7 +164,8 @@ Evicted by `DashboardCacheRefreshProcessor` after classification completes. TTL:
 
 | Key pattern | Purpose |
 |-------------|---------|
-| `auth:login:attempts:{email}` | Track failed login attempts (max 5 per 15 min) |
+| `auth:login:attempts:email:{email}` | Track failed login attempts per email (max 5 per 5 min) |
+| `auth:login:attempts:ip:{clientIp}` | Track failed login attempts per client IP (max 5 per 5 min) |
 
 PostgreSQL/PostGIS remains authoritative if cache is stale or evicted.
 
@@ -254,8 +255,12 @@ Actions per open record:
 ## Geofencing (PostGIS)
 
 - GIST indexes on office and attendance geo points.
-- Primary evaluation via PostGIS `ST_DWithin` / distance against assigned office coordinates and radius.
-- Java distance helpers used for display; database is authoritative for fence decisions.
+- Primary evaluation via PostGIS `ST_DWithin` / distance against assigned office coordinates and **`radius_meters`**.
+- **Default radius:** 100 meters for new offices.
+- **Valid range (admin API):** 50–300 meters.
+- **Demo office:** EY Bengaluru - Ecospace uses 100 meters.
+- Java distance helpers used for display; database/cache radius is authoritative for fence decisions.
+- Redis `office:employee:{id}` cache includes `radiusMeters`; evicted when office location is updated.
 
 ---
 

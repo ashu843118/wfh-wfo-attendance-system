@@ -186,7 +186,17 @@ export default function OfficeLocationsPage() {
               </div>
               <div className="form-group">
                 <label htmlFor="radiusMeters">Radius (meters)</label>
-                <input id="radiusMeters" name="radiusMeters" type="number" min="1" value={form.radiusMeters} onChange={handleChange} required />
+                <input
+                  id="radiusMeters"
+                  name="radiusMeters"
+                  type="number"
+                  min="50"
+                  max="300"
+                  value={form.radiusMeters}
+                  onChange={handleChange}
+                  required
+                />
+                <p className="form-hint">Allowed range: 50–300 meters. Default is 100 meters.</p>
               </div>
               <div className="form-group checkbox">
                 <input id="active" name="active" type="checkbox" checked={form.active} onChange={handleChange} />

@@ -15,6 +15,7 @@ import com.wfhwfo.attendance.common.enums.Role;
 import com.wfhwfo.attendance.common.security.UserPrincipal;
 import com.wfhwfo.attendance.geofence.dto.GeoFenceMatchResult;
 import com.wfhwfo.attendance.geofence.service.AssignedOfficeGeofenceService;
+import com.wfhwfo.attendance.geofence.service.LocationReliabilityService;
 import com.wfhwfo.attendance.office.dto.EmployeeAssignedOfficeDto;
 import com.wfhwfo.attendance.office.service.EmployeeOfficeCacheService;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,6 +51,8 @@ class LocationSignalServiceTest {
     private AttendanceWriteService attendanceWriteService;
     @Mock
     private CacheAdapter cacheAdapter;
+    @Mock
+    private LocationReliabilityService locationReliabilityService;
 
     private LocationSignalService locationSignalService;
     private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
@@ -83,12 +86,14 @@ class LocationSignalServiceTest {
                 attendanceWriteService,
                 cacheAdapter,
                 objectMapper,
-                properties);
+                properties,
+                locationReliabilityService);
     }
 
     @Test
     void autoCheckInWhenInsideAssignedOfficeAfterStableDuration() throws Exception {
         LocalDate today = LocalDate.now();
+        when(locationReliabilityService.isReliable(any(LocationPayload.class), eq(today))).thenReturn(true);
         LocalDateTime signalTime = LocalDateTime.now();
         AutoTrackingSessionState existingSession = AutoTrackingSessionState.builder()
                 .wasInside(true)
@@ -127,6 +132,7 @@ class LocationSignalServiceTest {
     @Test
     void pendingAutoCheckInWhenInsideButNotStableYet() {
         LocalDate today = LocalDate.now();
+        when(locationReliabilityService.isReliable(any(LocationPayload.class), eq(today))).thenReturn(true);
         when(cacheAdapter.get(anyString())).thenReturn(Optional.empty());
         when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
         when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
@@ -153,6 +159,7 @@ class LocationSignalServiceTest {
     @Test
     void requiresWfhConfirmationWhenOutsideAndNotCheckedIn() {
         LocalDate today = LocalDate.now();
+        when(locationReliabilityService.isReliable(any(LocationPayload.class), eq(today))).thenReturn(true);
         when(cacheAdapter.get(anyString())).thenReturn(Optional.empty());
         when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
         when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
@@ -173,5 +180,33 @@ class LocationSignalServiceTest {
 
         assertThat(response.isRequiresWfhConfirmation()).isTrue();
         assertThat(response.getTrackingState()).isEqualTo(AutoTrackingStateLabel.WFH_CONFIRMATION_REQUIRED);
+    }
+
+    @Test
+    void reportsPoorAccuracyWhenInsideOfficeButGpsUnreliable() {
+        LocalDate today = LocalDate.now();
+        when(locationReliabilityService.isReliable(any(LocationPayload.class), eq(today))).thenReturn(false);
+        when(cacheAdapter.get(anyString())).thenReturn(Optional.empty());
+        when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
+        when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
+                GeoFenceMatchResult.builder()
+                        .officeId(1L)
+                        .officeName("Pune Tech Park")
+                        .distanceMeters(50.0)
+                        .withinFence(true)
+                        .build());
+        when(attendanceRecordRepository.findByEmployeeIdAndAttendanceDate(1L, today)).thenReturn(Optional.empty());
+
+        LocationSignalResponse response = locationSignalService.processLocationSignal(user, LocationPayload.builder()
+                .latitude(18.5912)
+                .longitude(73.7389)
+                .accuracy(250.0)
+                .timestamp(LocalDateTime.now())
+                .build());
+
+        assertThat(response.isLocationReliable()).isFalse();
+        assertThat(response.getTrackingState()).isEqualTo(AutoTrackingStateLabel.POOR_LOCATION_ACCURACY);
+        verify(attendanceWriteService, org.mockito.Mockito.never()).recordTrackedEvent(
+                any(), any(), any(), any(), any(), any(), any());
     }
 }
