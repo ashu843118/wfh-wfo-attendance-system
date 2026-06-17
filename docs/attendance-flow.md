@@ -172,7 +172,7 @@ Manual check-in uses `POST /api/attendance/check-in` with a location payload. Th
 
 ### Geofence radius
 
-- Each assigned office has a **`radius_meters`** geofence validated via PostGIS.
+- Each assigned office has a **`radius_meters`** geofence validated via PostGIS `ST_DWithin` and `ST_Distance`.
 - **Default for new offices:** 100 meters (configurable by admin between **50–300** meters).
 - **EY Bengaluru demo office:** 100 meters.
 - Production systems may tune radius based on office campus size, GPS accuracy, and security requirements.

@@ -1,6 +1,7 @@
 package com.wfhwfo.attendance.outbox.processor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wfhwfo.attendance.attendance.dto.LocationPayload;
 import com.wfhwfo.attendance.attendance.entity.AttendanceEvent;
 import com.wfhwfo.attendance.attendance.entity.AttendanceRecord;
 import com.wfhwfo.attendance.attendance.entity.AttendanceSession;
@@ -13,9 +14,7 @@ import com.wfhwfo.attendance.common.enums.AttendanceMode;
 import com.wfhwfo.attendance.common.enums.OutboxEventType;
 import com.wfhwfo.attendance.common.enums.ProcessingStatus;
 import com.wfhwfo.attendance.geofence.dto.GeoFenceMatchResult;
-import com.wfhwfo.attendance.geofence.service.AssignedOfficeGeofenceService;
-import com.wfhwfo.attendance.office.dto.EmployeeAssignedOfficeDto;
-import com.wfhwfo.attendance.office.service.EmployeeOfficeCacheService;
+import com.wfhwfo.attendance.geofence.service.GeofenceService;
 import com.wfhwfo.attendance.outbox.dto.OutboxEventPayload;
 import com.wfhwfo.attendance.outbox.entity.OutboxEvent;
 import com.wfhwfo.attendance.outbox.service.OutboxService;
@@ -44,8 +43,7 @@ public class AttendanceClassificationProcessor implements OutboxEventProcessor {
     private final AttendanceEventRepository attendanceEventRepository;
     private final AttendanceSessionService attendanceSessionService;
     private final DailySummaryService dailySummaryService;
-    private final EmployeeOfficeCacheService employeeOfficeCacheService;
-    private final AssignedOfficeGeofenceService assignedOfficeGeofenceService;
+    private final GeofenceService geofenceService;
     private final AttendancePolicyRepository attendancePolicyRepository;
     private final OutboxService outboxService;
     private final ObjectMapper objectMapper;
@@ -134,11 +132,12 @@ public class AttendanceClassificationProcessor implements OutboxEventProcessor {
     }
 
     private void applyDistanceFromAssignedOffice(AttendanceRecord record, double latitude, double longitude) {
-        EmployeeAssignedOfficeDto office = employeeOfficeCacheService.getAssignedOffice(record.getEmployeeId());
-        GeoFenceMatchResult match = assignedOfficeGeofenceService.evaluate(office, latitude, longitude);
+        GeoFenceMatchResult match = geofenceService.validateForMatch(
+                record.getEmployeeId(),
+                LocationPayload.builder().latitude(latitude).longitude(longitude).build());
         if (match.isWithinFence()) {
             record.setAttendanceMode(AttendanceMode.WFO);
-            record.setMatchedOfficeLocationId(office.getOfficeLocationId());
+            record.setMatchedOfficeLocationId(match.getOfficeId());
             record.setDistanceFromOfficeMeters(match.getDistanceMeters());
         } else {
             record.setAttendanceMode(AttendanceMode.WFH);

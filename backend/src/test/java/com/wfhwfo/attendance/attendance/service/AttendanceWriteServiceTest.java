@@ -19,10 +19,8 @@ import com.wfhwfo.attendance.common.enums.Role;
 import com.wfhwfo.attendance.common.exception.BusinessException;
 import com.wfhwfo.attendance.common.security.UserPrincipal;
 import com.wfhwfo.attendance.geofence.dto.GeoFenceMatchResult;
-import com.wfhwfo.attendance.geofence.service.AssignedOfficeGeofenceService;
+import com.wfhwfo.attendance.geofence.service.GeofenceService;
 import com.wfhwfo.attendance.geofence.service.LocationReliabilityService;
-import com.wfhwfo.attendance.office.dto.EmployeeAssignedOfficeDto;
-import com.wfhwfo.attendance.office.service.EmployeeOfficeCacheService;
 import com.wfhwfo.attendance.outbox.service.OutboxService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
@@ -59,9 +57,7 @@ class AttendanceWriteServiceTest {
     @Mock
     private OutboxService outboxService;
     @Mock
-    private EmployeeOfficeCacheService employeeOfficeCacheService;
-    @Mock
-    private AssignedOfficeGeofenceService assignedOfficeGeofenceService;
+    private GeofenceService geofenceService;
     @Mock
     private LocationReliabilityService locationReliabilityService;
     @Mock
@@ -69,15 +65,6 @@ class AttendanceWriteServiceTest {
 
     @InjectMocks
     private AttendanceWriteService attendanceWriteService;
-
-    private final EmployeeAssignedOfficeDto assignedOffice = EmployeeAssignedOfficeDto.builder()
-            .officeLocationId(1L)
-            .officeName("Pune Tech Park")
-            .latitude(18.5912)
-            .longitude(73.7389)
-            .radiusMeters(800)
-            .active(true)
-            .build();
 
     private final UserPrincipal user = UserPrincipal.builder()
             .employeeId(1L)
@@ -91,8 +78,7 @@ class AttendanceWriteServiceTest {
     @Test
     void checkInCreatesEventSummaryAndOutboxEvent() {
         LocalDate today = LocalDate.now();
-        when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
-        when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
+        when(geofenceService.validateForMatch(eq(1L), any(LocationPayload.class))).thenReturn(
                 GeoFenceMatchResult.builder().officeId(1L).withinFence(true).distanceMeters(10.0).build());
         when(locationReliabilityService.isReliable(any(LocationPayload.class), eq(today))).thenReturn(true);
         when(attendanceSessionService.findOpenSession(1L, today)).thenReturn(Optional.empty());
@@ -158,8 +144,7 @@ class AttendanceWriteServiceTest {
     @Test
     void allowsReCheckInAfterPreviousSessionClosed() {
         LocalDate today = LocalDate.now();
-        when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
-        when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
+        when(geofenceService.validateForMatch(eq(1L), any(LocationPayload.class))).thenReturn(
                 GeoFenceMatchResult.builder().withinFence(false).distanceMeters(100.0).build());
         AttendanceRecord existing = AttendanceRecord.builder()
                 .id(100L)
@@ -198,8 +183,7 @@ class AttendanceWriteServiceTest {
     @Test
     void rejectsOfficeCheckInWhenLocationAccuracyIsPoor() {
         LocalDate today = LocalDate.now();
-        when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
-        when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
+        when(geofenceService.validateForMatch(eq(1L), any(LocationPayload.class))).thenReturn(
                 GeoFenceMatchResult.builder().officeId(1L).withinFence(true).distanceMeters(10.0).build());
         when(locationReliabilityService.isReliable(any(LocationPayload.class), eq(today))).thenReturn(false);
         when(attendanceSessionService.findOpenSession(1L, today)).thenReturn(Optional.empty());

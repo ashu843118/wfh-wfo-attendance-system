@@ -21,11 +21,9 @@ import com.wfhwfo.attendance.common.enums.ProcessingStatus;
 import com.wfhwfo.attendance.common.exception.BusinessException;
 import com.wfhwfo.attendance.common.security.UserPrincipal;
 import com.wfhwfo.attendance.geofence.dto.GeoFenceMatchResult;
-import com.wfhwfo.attendance.geofence.service.AssignedOfficeGeofenceService;
+import com.wfhwfo.attendance.geofence.service.GeofenceService;
 import com.wfhwfo.attendance.geofence.service.GeofenceLoggingSupport;
 import com.wfhwfo.attendance.geofence.service.LocationReliabilityService;
-import com.wfhwfo.attendance.office.dto.EmployeeAssignedOfficeDto;
-import com.wfhwfo.attendance.office.service.EmployeeOfficeCacheService;
 import com.wfhwfo.attendance.outbox.dto.OutboxEventPayload;
 import com.wfhwfo.attendance.outbox.service.OutboxService;
 import lombok.RequiredArgsConstructor;
@@ -47,9 +45,8 @@ public class AttendanceWriteService {
     private final AttendanceSessionService attendanceSessionService;
     private final DailySummaryService dailySummaryService;
     private final OutboxService outboxService;
-    private final EmployeeOfficeCacheService employeeOfficeCacheService;
     private final TodayAttendanceCacheService todayAttendanceCacheService;
-    private final AssignedOfficeGeofenceService assignedOfficeGeofenceService;
+    private final GeofenceService geofenceService;
     private final LocationReliabilityService locationReliabilityService;
 
     @Transactional
@@ -116,9 +113,13 @@ public class AttendanceWriteService {
         }
 
         if (geofenceMatch != null) {
-            EmployeeAssignedOfficeDto office = employeeOfficeCacheService.getAssignedOffice(user.getEmployeeId());
             GeofenceLoggingSupport.logEvaluation(
-                    log, user.getEmployeeId(), office.getOfficeLocationId(), geofenceMatch, location.getAccuracy(), logSource(triggerMode));
+                    log,
+                    user.getEmployeeId(),
+                    geofenceMatch.getOfficeId(),
+                    geofenceMatch,
+                    location.getAccuracy(),
+                    logSource(triggerMode));
         }
 
         AttendanceRecord summary = getOrCreateSummary(user, today);
@@ -414,11 +415,9 @@ public class AttendanceWriteService {
     }
 
     private GeoFenceMatchResult resolveGeofenceMatch(Long employeeId, LocationPayload location, String source) {
-        EmployeeAssignedOfficeDto office = employeeOfficeCacheService.getAssignedOffice(employeeId);
-        GeoFenceMatchResult result = assignedOfficeGeofenceService.evaluate(
-                office, location.getLatitude(), location.getLongitude());
+        GeoFenceMatchResult result = geofenceService.validateForMatch(employeeId, location);
         GeofenceLoggingSupport.logEvaluation(
-                log, employeeId, office.getOfficeLocationId(), result, location.getAccuracy(), source);
+                log, employeeId, result.getOfficeId(), result, location.getAccuracy(), source);
         return result;
     }
 

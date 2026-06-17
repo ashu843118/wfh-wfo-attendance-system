@@ -28,7 +28,7 @@ Times are stored in **UTC** and displayed in the **browser local timezone** (e.g
 | Area | Features |
 |------|----------|
 | **Attendance** | Auto WFO check-in, WFH confirmation prompt, manual check-in/out, same-day re-check-in, WFO auto-checkout monitoring |
-| **Geo-fencing** | PostGIS geofence validation against assigned office; Redis-cached office lookup |
+| **Geo-fencing** | PostGIS `ST_DWithin` / `ST_Distance` against assigned office; Redis caches office metadata only |
 | **Summaries** | Daily `attendance_records` with final WFO/WFH mode and office minutes |
 | **Sessions** | Per check-in session mode (WFO/WFH) in `attendance_sessions` and `attendance_events` |
 | **History** | Full `attendance_events` and `attendance_sessions` audit trail |

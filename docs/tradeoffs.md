@@ -168,12 +168,16 @@ Previously considered continuous tracking for all open sessions — rejected in 
 
 ---
 
-## 14. PostGIS vs Application-Only Haversine
+## 14. PostGIS-Only Geofence Validation
 
 | Choice | Rationale |
 |--------|-----------|
-| **PostGIS primary** | Spatial indexes, consistent distance semantics, co-located with relational data |
-| **Java Haversine** | Display/helper only; not authority for fence decisions |
+| **PostGIS `ST_DWithin` / `ST_DDistance`** | Authoritative inside/outside and distance-in-meters for all attendance geofence decisions |
+| **Native query on assigned office join** | Uses `employees.assigned_office_location_id` and `office_locations.geo_point` with GiST index |
+| **No Java Haversine for attendance** | Avoids duplicate geofence logic and keeps PostgreSQL as single source of truth for fence decisions |
+| **Redis for metadata only** | Assigned office name/address/radius and today status cache — not used for final inside/outside calculation |
+
+PostGIS point order is **longitude, latitude**. Distance saved on `attendance_events` comes from `ST_Distance`.
 
 ---
 

@@ -20,9 +20,11 @@ flowchart LR
     Attendance --> DBWrite["Attendance DB Writer"]
     Attendance --> OutboxWriter["Outbox Event Writer"]
 
-    Geo --> OfficeCache["Office Cache Service"]
-    OfficeCache --> Redis["Redis Cache"]
-    OfficeCache --> PostGIS["PostgreSQL PostGIS"]
+    Geo --> PostGIS["PostGIS Geofence Validation - ST_DWithin and ST_Distance"]
+
+    Attendance --> OfficeCache["Office Cache Service"]
+    OfficeCache --> Redis["Redis Cache - office metadata and today status"]
+    OfficeCache --> PostGIS
 
     DBWrite --> Events["attendance_events - session mode"]
     DBWrite --> Sessions["attendance_sessions - active session"]
@@ -103,7 +105,7 @@ Multiple sessions on the same day may have different session modes. Dashboards u
 | **auth** | `auth` | JWT authentication, login rate limiting |
 | **employee** / **team** | `employee` | Employee and team domain, admin CRUD |
 | **attendance** | `attendance` | Check-in/out, location signals, sessions, daily summaries, EOD scheduler |
-| **geofence** | `geofence` | Assigned-office geofence evaluation (PostGIS) |
+| **geofence** | `geofence` | Assigned-office geofence validation via PostGIS `ST_DWithin` / `ST_Distance` |
 | **office** | `office` | Office locations, employee office assignment, Redis cache |
 | **policy** | `policy` | Team attendance policies (`required_wfo_minutes`, check-in times) |
 | **dashboard** | `dashboard` | Employee, Manager, Leadership, Admin aggregated APIs |
@@ -229,8 +231,8 @@ Check-in transaction (Attendance Module owns core persistence):
 2. Acquire Redisson lock (`attendance:events:employeeId:date`).
 3. Check active session from **DB** (source of truth).
 4. Call Geofence Service.
-5. Geofence Service gets assigned office from Redis cache or DB/PostGIS.
-6. Backend decides `session_mode` = WFO or WFH (frontend does not decide).
+5. Geofence Service runs PostGIS query against assigned office `geo_point` and `radius_meters`.
+6. Backend decides `session_mode` = WFO or WFH from PostGIS `insideGeofence` result (frontend does not decide).
 7. Save `attendance_event` with session mode.
 8. Create/update `attendance_session` and daily summary in `attendance_records`.
 9. Save `outbox_event` for async side effects only.
@@ -247,7 +249,7 @@ Redisson lock acquired (attendance:events:employeeId:date)
 Check active session from DB
         │
         ▼
-Geofence evaluation (Redis office cache → PostGIS) → session_mode WFO or WFH
+Geofence evaluation (PostGIS ST_DWithin / ST_Distance) → session_mode WFO or WFH
         │
         ▼
 Write attendance_event + attendance_session + attendance_record (transaction)
@@ -324,13 +326,19 @@ Actions per open record:
 
 ## Geofencing (PostGIS)
 
-- GIST indexes on office and attendance geo points.
-- Primary evaluation via PostGIS `ST_DWithin` / distance against assigned office coordinates and **`radius_meters`**.
+Geofence validation is performed using **PostgreSQL/PostGIS** functions such as `ST_DWithin` and `ST_Distance`. The backend stores office coordinates as a PostGIS `geography(Point, 4326)` column (`office_locations.geo_point`) and validates employee location against the assigned office radius in the database.
+
+- **Point order:** PostGIS uses **longitude first, latitude second** (`ST_MakePoint(longitude, latitude)`).
+- **`ST_DWithin`** determines inside/outside against `radius_meters`.
+- **`ST_DDistance`** returns distance in meters for audit fields (`distance_from_office_meters`).
+- GIST index on `office_locations.geo_point` for spatial queries.
+- Employee validation joins `employees.assigned_office_location_id` → `office_locations.id` (active employee and active office only).
+- **No Haversine in Java** for attendance WFO/WFH, check-in, auto-checkout, or location-signal decisions.
+- Redis caches **office metadata** (name, address, radius) and **today attendance status** only — not final geofence inside/outside decisions.
 - **Default radius:** 100 meters for new offices.
 - **Valid range (admin API):** 50–300 meters.
 - **Demo office:** EY Bengaluru - Ecospace uses 100 meters.
-- Java distance helpers used for display; database/cache radius is authoritative for fence decisions.
-- Redis `office:employee:employeeId` cache includes `radiusMeters`; evicted when office location is updated.
+- `geo_point` is maintained when office latitude/longitude changes via admin API.
 
 ---
 

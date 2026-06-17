@@ -14,7 +14,7 @@ import com.wfhwfo.attendance.common.enums.AutoTrackingStateLabel;
 import com.wfhwfo.attendance.common.enums.Role;
 import com.wfhwfo.attendance.common.security.UserPrincipal;
 import com.wfhwfo.attendance.geofence.dto.GeoFenceMatchResult;
-import com.wfhwfo.attendance.geofence.service.AssignedOfficeGeofenceService;
+import com.wfhwfo.attendance.geofence.service.GeofenceService;
 import com.wfhwfo.attendance.geofence.service.LocationReliabilityService;
 import com.wfhwfo.attendance.office.dto.EmployeeAssignedOfficeDto;
 import com.wfhwfo.attendance.office.service.EmployeeOfficeCacheService;
@@ -30,9 +30,9 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,7 +42,7 @@ class LocationSignalServiceTest {
     @Mock
     private EmployeeOfficeCacheService employeeOfficeCacheService;
     @Mock
-    private AssignedOfficeGeofenceService assignedOfficeGeofenceService;
+    private GeofenceService geofenceService;
     @Mock
     private AttendanceRecordRepository attendanceRecordRepository;
     @Mock
@@ -80,7 +80,7 @@ class LocationSignalServiceTest {
         properties.setCheckoutGraceSeconds(60);
         locationSignalService = new LocationSignalService(
                 employeeOfficeCacheService,
-                assignedOfficeGeofenceService,
+                geofenceService,
                 attendanceRecordRepository,
                 attendanceSessionService,
                 attendanceWriteService,
@@ -101,7 +101,7 @@ class LocationSignalServiceTest {
                 .build();
         when(cacheAdapter.get(anyString())).thenReturn(Optional.of(objectMapper.writeValueAsString(existingSession)));
         when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
-        when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
+        when(geofenceService.validateForMatch(eq(1L), any(LocationPayload.class))).thenReturn(
                 GeoFenceMatchResult.builder()
                         .officeId(1L)
                         .officeName("Pune Tech Park")
@@ -122,7 +122,7 @@ class LocationSignalServiceTest {
                 eq(today),
                 eq(AttendanceEventType.AUTO_CHECK_IN),
                 eq(AttendanceTriggerMode.AUTO),
-                org.mockito.ArgumentMatchers.any(LocationPayload.class),
+                any(LocationPayload.class),
                 eq("AUTO_PWA"),
                 any(GeoFenceMatchResult.class));
         assertThat(response.isInsideOffice()).isTrue();
@@ -135,7 +135,7 @@ class LocationSignalServiceTest {
         when(locationReliabilityService.isReliable(any(LocationPayload.class), eq(today))).thenReturn(true);
         when(cacheAdapter.get(anyString())).thenReturn(Optional.empty());
         when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
-        when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
+        when(geofenceService.validateForMatch(eq(1L), any(LocationPayload.class))).thenReturn(
                 GeoFenceMatchResult.builder()
                         .officeId(1L)
                         .officeName("Pune Tech Park")
@@ -162,7 +162,7 @@ class LocationSignalServiceTest {
         when(locationReliabilityService.isReliable(any(LocationPayload.class), eq(today))).thenReturn(true);
         when(cacheAdapter.get(anyString())).thenReturn(Optional.empty());
         when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
-        when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
+        when(geofenceService.validateForMatch(eq(1L), any(LocationPayload.class))).thenReturn(
                 GeoFenceMatchResult.builder()
                         .officeId(1L)
                         .officeName("Pune Tech Park")
@@ -188,7 +188,7 @@ class LocationSignalServiceTest {
         when(locationReliabilityService.isReliable(any(LocationPayload.class), eq(today))).thenReturn(false);
         when(cacheAdapter.get(anyString())).thenReturn(Optional.empty());
         when(employeeOfficeCacheService.getAssignedOffice(1L)).thenReturn(assignedOffice);
-        when(assignedOfficeGeofenceService.evaluate(any(), anyDouble(), anyDouble())).thenReturn(
+        when(geofenceService.validateForMatch(eq(1L), any(LocationPayload.class))).thenReturn(
                 GeoFenceMatchResult.builder()
                         .officeId(1L)
                         .officeName("Pune Tech Park")
@@ -206,7 +206,7 @@ class LocationSignalServiceTest {
 
         assertThat(response.isLocationReliable()).isFalse();
         assertThat(response.getTrackingState()).isEqualTo(AutoTrackingStateLabel.POOR_LOCATION_ACCURACY);
-        verify(attendanceWriteService, org.mockito.Mockito.never()).recordTrackedEvent(
+        verify(attendanceWriteService, never()).recordTrackedEvent(
                 any(), any(), any(), any(), any(), any(), any());
     }
 }

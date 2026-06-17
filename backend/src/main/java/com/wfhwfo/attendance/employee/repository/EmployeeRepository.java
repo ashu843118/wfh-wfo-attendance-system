@@ -2,6 +2,7 @@ package com.wfhwfo.attendance.employee.repository;
 
 import com.wfhwfo.attendance.common.enums.Role;
 import com.wfhwfo.attendance.employee.entity.Employee;
+import com.wfhwfo.attendance.geofence.repository.GeofenceValidationProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -124,4 +125,29 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
             WHERE e.assigned_office_location_id = :officeLocationId
             """, nativeQuery = true)
     List<Long> findEmployeeIdsByAssignedOfficeLocationId(@Param("officeLocationId") Long officeLocationId);
+
+    @Query(value = """
+            SELECT o.id AS officeId,
+                   o.office_name AS officeName,
+                   o.address AS officeAddress,
+                   o.radius_meters AS radiusMeters,
+                   ST_Distance(
+                       o.geo_point,
+                       ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography
+                   ) AS distanceMeters,
+                   ST_DWithin(
+                       o.geo_point,
+                       ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography,
+                       o.radius_meters
+                   ) AS insideGeofence
+            FROM employees e
+            JOIN office_locations o ON o.id = e.assigned_office_location_id
+            WHERE e.id = :employeeId
+              AND e.active = true
+              AND o.active = true
+            """, nativeQuery = true)
+    Optional<GeofenceValidationProjection> validateAssignedOfficeGeofence(
+            @Param("employeeId") Long employeeId,
+            @Param("latitude") double latitude,
+            @Param("longitude") double longitude);
 }

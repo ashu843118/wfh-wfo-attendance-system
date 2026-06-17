@@ -97,6 +97,8 @@ Core employee attendance APIs. Location payloads require `latitude`, `longitude`
 
 The **Attendance Module** directly persists core data (`attendance_events`, `attendance_sessions`, `attendance_records`) in the same transaction as check-in/out. The **outbox** handles async side effects only (notifications, dashboard cache refresh, outlier detection). **DB is the source of truth** for active sessions. An optional Redis cache (`attendance:today:employeeId:date`) may speed today status lookup but is not authoritative.
 
+**Geofence validation** uses PostgreSQL/PostGIS (`ST_DWithin`, `ST_Distance`) against the employee's assigned office `geo_point` and `radius_meters`. Redis caches office metadata for display only — not for final inside/outside decisions.
+
 **Session mode vs daily mode:**
 
 - Each check-in stores **session mode** (WFO/WFH) on events and sessions — decided by backend geofence validation, not the frontend.

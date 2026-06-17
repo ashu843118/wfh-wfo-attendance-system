@@ -22,7 +22,7 @@ import com.wfhwfo.attendance.common.enums.CurrentSessionStatus;
 import com.wfhwfo.attendance.common.enums.ProcessingStatus;
 import com.wfhwfo.attendance.common.security.UserPrincipal;
 import com.wfhwfo.attendance.geofence.dto.GeoFenceMatchResult;
-import com.wfhwfo.attendance.geofence.service.AssignedOfficeGeofenceService;
+import com.wfhwfo.attendance.geofence.service.GeofenceService;
 import com.wfhwfo.attendance.geofence.service.LocationReliabilityService;
 import com.wfhwfo.attendance.office.dto.EmployeeAssignedOfficeDto;
 import com.wfhwfo.attendance.office.service.EmployeeOfficeCacheService;
@@ -44,7 +44,7 @@ public class LocationSignalService {
     private static final String AUTO_SOURCE = "AUTO_PWA";
 
     private final EmployeeOfficeCacheService employeeOfficeCacheService;
-    private final AssignedOfficeGeofenceService assignedOfficeGeofenceService;
+    private final GeofenceService geofenceService;
     private final AttendanceRecordRepository attendanceRecordRepository;
     private final AttendanceSessionService attendanceSessionService;
     private final AttendanceWriteService attendanceWriteService;
@@ -59,8 +59,7 @@ public class LocationSignalService {
         LocalDateTime signalTime = resolveSignalTime(today, location);
 
         EmployeeAssignedOfficeDto assignedOffice = employeeOfficeCacheService.getAssignedOffice(user.getEmployeeId());
-        GeoFenceMatchResult geofenceMatch = assignedOfficeGeofenceService.evaluate(
-                assignedOffice, location.getLatitude(), location.getLongitude());
+        GeoFenceMatchResult geofenceMatch = geofenceService.validateForMatch(user.getEmployeeId(), location);
         boolean insideOffice = geofenceMatch.isWithinFence();
         boolean locationReliable = locationReliabilityService.isReliable(location, today);
 
