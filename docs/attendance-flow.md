@@ -15,6 +15,98 @@ WFH sessions do **not** keep checking location. There is no "Enable auto attenda
 
 ---
 
+## Session Mode vs Daily Mode
+
+Two distinct concepts are stored separately:
+
+| Concept | When decided | Stored in | Values |
+|---------|--------------|-----------|--------|
+| **Session mode** | Synchronously at each check-in | `attendance_events.session_mode`, `attendance_sessions.session_mode` | WFO or WFH |
+| **Daily attendance mode** | After sessions close / EOD | `attendance_records.attendance_mode` | WFO or WFH only (no HYBRID) |
+
+### Session mode rules (backend decides — not frontend)
+
+| Check-in scenario | Session mode |
+|-------------------|--------------|
+| Inside assigned office geofence (auto or manual) | WFO |
+| Outside assigned office geofence after WFH confirmation or manual check-in | WFH |
+| Auto WFO check-in | WFO |
+| WFH confirmed check-in | WFH |
+
+Multiple sessions on the same day may have different session modes. Manager drill-down uses **final daily mode** from `attendance_records`. Employee session/event history shows **per-session WFO/WFH**.
+
+---
+
+## Check-In Sequence
+
+```mermaid
+sequenceDiagram
+    participant FE as React Frontend
+    participant AC as Attendance Controller
+    participant AS as Attendance Service
+    participant RL as Redisson Lock
+    participant GS as Geofence Service
+    participant RC as Redis Cache
+    participant DB as PostgreSQL PostGIS
+    participant OW as Outbox Writer
+
+    FE->>AC: POST check-in with location
+    AC->>AS: checkIn employeeId and location
+    AS->>RL: acquire check-in lock
+    AS->>AS: check active session from DB
+    AS->>GS: validate assigned office geofence
+    GS->>RC: get assigned office cache
+    alt cache miss
+        GS->>DB: load assigned office and geofence
+        GS->>RC: cache assigned office
+    end
+    GS->>DB: calculate distance using PostGIS
+    GS-->>AS: geofence result and session mode
+    AS->>DB: save attendance event with WFO or WFH session mode
+    AS->>DB: create or update attendance daily summary
+    AS->>OW: save outbox event
+    AS->>RL: release lock
+    AS-->>FE: check-in success with WFO or WFH
+```
+
+---
+
+## Dashboard Load / Already Checked-In Flow
+
+```mermaid
+sequenceDiagram
+    participant FE as React Frontend
+    participant API as Attendance API
+    participant AS as Attendance Service
+    participant RC as Redis Cache
+    participant DB as PostgreSQL PostGIS
+
+    FE->>API: GET today attendance status
+    API->>AS: getTodayStatus employeeId
+    AS->>RC: check optional attendance today cache
+    alt cache hit
+        RC-->>AS: cached status
+    else cache miss
+        AS->>DB: load attendance record and active session for today
+        AS->>RC: cache status with short TTL
+    end
+    AS-->>FE: status, canCheckIn, canCheckOut, currentSessionMode
+
+    alt canCheckIn is true
+        FE->>FE: request current browser location
+    else already checked in
+        FE->>FE: show checked-in state
+    end
+```
+
+**Notes:**
+
+- **DB is the source of truth** for already checked-in status and active sessions.
+- Redis today attendance cache (`attendance:today:employeeId:date`) is **optional** for faster dashboard refresh.
+- Cache must be evicted or updated on check-in, checkout, auto-checkout, WFH confirmed check-in, and EOD system close.
+
+---
+
 ## Employee Flow Diagram
 
 ```mermaid
@@ -76,7 +168,7 @@ flowchart TD
 | Inside assigned office geofence | **WFO** session — auto-checkout monitoring starts |
 | Outside assigned office geofence | **WFH** session — no continuous location monitoring |
 
-Manual check-in uses `POST /api/attendance/check-in` with a location payload.
+Manual check-in uses `POST /api/attendance/check-in` with a location payload. The **backend** classifies session mode from assigned office geofence — the frontend does not decide WFO/WFH.
 
 ### Geofence radius
 
@@ -175,10 +267,18 @@ flowchart TD
 |-------|------|
 | `first_check_in_time` | Earliest valid check-in event of the day |
 | `final_check_out_time` | Latest valid checkout of the day |
-| `total_office_minutes` | Sum of durations of all **WFO** sessions (open WFO at EOD counts to close time) |
-| `attendance_mode` | **WFO** if `total_office_minutes >= required_wfo_minutes`, else **WFH** |
-| `current_session_status` | `NONE`, `OPEN`, or `CLOSED` |
+| `total_office_minutes` | Sum of durations of all **WFO sessions only** (open WFO at EOD counts to close time) |
+| `attendance_mode` | **Final daily mode**: WFO if `total_office_minutes >= required_wfo_minutes`, else **WFH** |
+| `current_session_status` | `NONE`, `OPEN`, or `CLOSED` — reflects active session from DB |
 | `status` | e.g. `CHECKED_IN`, `CHECKED_OUT`, `MISSING_CHECKOUT`, `SYSTEM_CLOSED` |
+
+### Event and session storage
+
+| Table | Session mode | Notes |
+|-------|--------------|-------|
+| `attendance_events` | `session_mode` on each check-in event | Also stores `matched_office_location_id`, `distance_from_office_meters`, `source`, `trigger_mode` |
+| `attendance_sessions` | `session_mode` per work session | DB source of truth for active session; status `OPEN`, `CLOSED`, or `SYSTEM_CLOSED` |
+| `attendance_records` | `attendance_mode` = final daily WFO/WFH | Separate from per-session mode |
 
 ### Important MVP constraints
 

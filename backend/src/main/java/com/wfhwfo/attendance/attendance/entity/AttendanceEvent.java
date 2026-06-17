@@ -1,6 +1,7 @@
 package com.wfhwfo.attendance.attendance.entity;
 
 import com.wfhwfo.attendance.common.enums.AttendanceEventType;
+import com.wfhwfo.attendance.common.enums.AttendanceMode;
 import com.wfhwfo.attendance.common.enums.AttendanceTriggerMode;
 import jakarta.persistence.*;
 import lombok.*;
@@ -56,6 +57,13 @@ public class AttendanceEvent {
 
     @Column(name = "matched_office_location_id")
     private Long matchedOfficeLocationId;
+
+    @Column(name = "distance_from_office_meters")
+    private Double distanceFromOfficeMeters;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "session_mode", length = 10)
+    private AttendanceMode sessionMode;
 
     @Column(nullable = false, length = 50)
     private String source;

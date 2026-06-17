@@ -40,6 +40,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -62,6 +64,8 @@ class AttendanceWriteServiceTest {
     private AssignedOfficeGeofenceService assignedOfficeGeofenceService;
     @Mock
     private LocationReliabilityService locationReliabilityService;
+    @Mock
+    private TodayAttendanceCacheService todayAttendanceCacheService;
 
     @InjectMocks
     private AttendanceWriteService attendanceWriteService;
@@ -131,6 +135,10 @@ class AttendanceWriteServiceTest {
                 eq("AttendanceRecord"),
                 eq(100L),
                 any());
+        verify(attendanceEventRepository, atLeastOnce()).save(argThat(event ->
+                event.getSessionMode() == AttendanceMode.WFO
+                        && event.getDistanceFromOfficeMeters() != null));
+        verify(todayAttendanceCacheService).evict(1L, today);
     }
 
     @Test

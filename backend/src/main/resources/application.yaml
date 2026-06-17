@@ -43,6 +43,7 @@ app:
     office-locations-ttl-seconds: 300
     employee-office-ttl-seconds: 900
     dashboard-ttl-seconds: 60
+    today-attendance-ttl-seconds: 180
   auth:
     login-rate-limit:
       max-attempts: 5

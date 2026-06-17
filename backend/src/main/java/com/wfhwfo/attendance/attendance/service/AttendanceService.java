@@ -42,6 +42,7 @@ public class AttendanceService {
     private final AttendanceWriteService attendanceWriteService;
     private final LocationSignalService locationSignalService;
     private final LockAdapter lockAdapter;
+    private final TodayAttendanceCacheService todayAttendanceCacheService;
 
     public AttendanceActionResponse checkIn(CheckInRequest request) {
         UserPrincipal user = SecurityUtils.currentUser();
@@ -107,9 +108,17 @@ public class AttendanceService {
     @Transactional(readOnly = true)
     public AttendanceRecordResponse getTodayForEmployee() {
         UserPrincipal user = SecurityUtils.currentUser();
-        return attendanceRecordRepository.findByEmployeeIdAndAttendanceDate(user.getEmployeeId(), LocalDate.now())
-                .map(this::toResponse)
-                .orElse(null);
+        LocalDate today = LocalDate.now();
+        Long employeeId = user.getEmployeeId();
+
+        return todayAttendanceCacheService.get(employeeId, today)
+                .map(this::toResponseFromCache)
+                .orElseGet(() -> attendanceRecordRepository.findByEmployeeIdAndAttendanceDate(employeeId, today)
+                        .map(record -> {
+                            todayAttendanceCacheService.cache(record);
+                            return toResponse(record);
+                        })
+                        .orElse(null));
     }
 
     @Transactional(readOnly = true)
@@ -200,9 +209,30 @@ public class AttendanceService {
                 .eventTime(event.getEventTime())
                 .triggerMode(event.getTriggerMode())
                 .source(event.getSource())
+                .sessionMode(event.getSessionMode())
+                .matchedOfficeLocationId(event.getMatchedOfficeLocationId())
+                .distanceFromOfficeMeters(event.getDistanceFromOfficeMeters())
                 .latitude(event.getLatitude())
                 .longitude(event.getLongitude())
                 .valid(event.isValid())
+                .build();
+    }
+
+    private AttendanceRecordResponse toResponseFromCache(
+            com.wfhwfo.attendance.attendance.dto.TodayAttendanceStatusCache cached) {
+        return AttendanceRecordResponse.builder()
+                .id(cached.getId())
+                .attendanceDate(cached.getAttendanceDate())
+                .checkInTime(cached.getFirstCheckInTime())
+                .checkOutTime(cached.getFinalCheckoutTime())
+                .attendanceMode(cached.getAttendanceMode())
+                .currentSessionMode(cached.getCurrentSessionMode())
+                .currentSessionStatus(cached.getCurrentSessionStatus())
+                .status(cached.getStatus())
+                .processingStatus(cached.getProcessingStatus())
+                .matchedOfficeLocationId(cached.getMatchedOfficeLocationId())
+                .distanceFromOfficeMeters(cached.getDistanceFromOfficeMeters())
+                .totalOfficeMinutes(cached.getTotalOfficeMinutes())
                 .build();
     }
 

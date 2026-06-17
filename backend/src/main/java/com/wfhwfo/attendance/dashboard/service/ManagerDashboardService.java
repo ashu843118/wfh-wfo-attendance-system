@@ -11,8 +11,11 @@ import com.wfhwfo.attendance.common.enums.AttendanceStatus;
 import com.wfhwfo.attendance.common.enums.OutlierStatus;
 import com.wfhwfo.attendance.common.enums.ProcessingStatus;
 import com.wfhwfo.attendance.common.security.SecurityUtils;
+import com.wfhwfo.attendance.dashboard.dto.ManagerDashboardDrilldownDto;
+import com.wfhwfo.attendance.dashboard.dto.ManagerDashboardDrilldownType;
 import com.wfhwfo.attendance.dashboard.dto.ManagerDashboardResponse;
 import com.wfhwfo.attendance.dashboard.dto.TeamAttendanceRowResponse;
+import com.wfhwfo.attendance.dashboard.repository.ManagerDashboardDrilldownRepository;
 import com.wfhwfo.attendance.employee.repository.EmployeeRepository;
 import com.wfhwfo.attendance.outlier.repository.AttendanceOutlierRepository;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +44,7 @@ public class ManagerDashboardService {
     private final AttendanceRecordRepository attendanceRecordRepository;
     private final EmployeeRepository employeeRepository;
     private final AttendanceOutlierRepository attendanceOutlierRepository;
+    private final ManagerDashboardDrilldownRepository drilldownRepository;
     private final CacheAdapter cacheAdapter;
     private final ObjectMapper objectMapper;
 
@@ -86,6 +90,90 @@ public class ManagerDashboardService {
         LocalDate toDate = to != null ? to : LocalDate.now();
         return attendanceRecordRepository.findEmployeeAttendanceForManager(
                 managerId, employeeId, fromDate, toDate, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<ManagerDashboardDrilldownDto> getDrilldown(
+            ManagerDashboardDrilldownType type,
+            LocalDate date,
+            Pageable pageable) {
+        Long managerId = SecurityUtils.currentUser().getEmployeeId();
+        LocalDate targetDate = date != null ? date : LocalDate.now();
+
+        log.info(
+                "Manager drilldown requested managerId={} type={} date={} page={} size={}",
+                managerId,
+                type,
+                targetDate,
+                pageable.getPageNumber(),
+                pageable.getPageSize());
+
+        Page<Object[]> page = switch (type) {
+            case TEAM_SIZE -> drilldownRepository.findTeamSizeDrilldown(managerId, targetDate, pageable);
+            case PRESENT -> drilldownRepository.findPresentDrilldown(
+                    managerId, targetDate, PRESENT_STATUSES, pageable);
+            case WFO -> drilldownRepository.findModeDrilldown(
+                    managerId, targetDate, AttendanceMode.WFO, pageable);
+            case WFH -> drilldownRepository.findModeDrilldown(
+                    managerId, targetDate, AttendanceMode.WFH, pageable);
+            case ABSENT -> drilldownRepository.findAbsentDrilldown(
+                    managerId, targetDate, PRESENT_STATUSES, pageable);
+            case OUTLIERS -> drilldownRepository.findOutlierDrilldown(
+                    managerId, OutlierStatus.OPEN, pageable);
+        };
+
+        PagedResponse<ManagerDashboardDrilldownDto> response = type == ManagerDashboardDrilldownType.OUTLIERS
+                ? PagedResponseMapper.from(page, this::toOutlierDrilldown)
+                : PagedResponseMapper.from(page, this::toEmployeeDrilldown);
+
+        log.info(
+                "Manager drilldown result managerId={} type={} date={} page={} size={} totalElements={}",
+                managerId,
+                type,
+                targetDate,
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                response.getTotalElements());
+
+        return response;
+    }
+
+    private ManagerDashboardDrilldownDto toEmployeeDrilldown(Object[] row) {
+        AttendanceStatus status = row[4] != null ? (AttendanceStatus) row[4] : null;
+        AttendanceMode mode = row[5] != null ? (AttendanceMode) row[5] : null;
+        java.time.LocalDateTime checkIn = row[6] != null ? (java.time.LocalDateTime) row[6] : null;
+        java.time.LocalDateTime checkOut = row[7] != null ? (java.time.LocalDateTime) row[7] : null;
+        Integer officeMinutes = row[8] != null ? (Integer) row[8] : null;
+        com.wfhwfo.attendance.common.enums.CurrentSessionStatus sessionStatus =
+                row[9] != null ? (com.wfhwfo.attendance.common.enums.CurrentSessionStatus) row[9] : null;
+        Long outlierCount = row[10] != null ? (Long) row[10] : 0L;
+
+        return ManagerDashboardDrilldownDto.builder()
+                .employeeId((Long) row[0])
+                .employeeName((String) row[1])
+                .email((String) row[2])
+                .assignedOfficeName(row[3] != null ? (String) row[3] : null)
+                .todayStatus(status != null ? status.name() : "ABSENT")
+                .attendanceMode(mode != null ? mode.name() : null)
+                .firstCheckInTime(checkIn)
+                .finalCheckOutTime(checkOut)
+                .totalOfficeMinutes(officeMinutes)
+                .currentSessionStatus(sessionStatus != null ? sessionStatus.name() : null)
+                .outlierCount(outlierCount)
+                .build();
+    }
+
+    private ManagerDashboardDrilldownDto toOutlierDrilldown(Object[] row) {
+        return ManagerDashboardDrilldownDto.builder()
+                .outlierId((Long) row[0])
+                .employeeId((Long) row[1])
+                .employeeName((String) row[2])
+                .outlierType((com.wfhwfo.attendance.common.enums.OutlierType) row[3])
+                .severity((com.wfhwfo.attendance.common.enums.Severity) row[4])
+                .description((String) row[5])
+                .detectedAt(row[6] != null ? (java.time.LocalDateTime) row[6] : null)
+                .outlierStatus((OutlierStatus) row[7])
+                .build();
     }
 
     private ManagerDashboardResponse loadAndCacheDashboard(Long managerId, LocalDate date, String cacheKey) {

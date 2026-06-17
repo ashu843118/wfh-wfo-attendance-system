@@ -324,3 +324,33 @@
   margin: 0;
   font-style: italic;
 }
+
+.drilldown-panel {
+  margin-bottom: 1.5rem;
+}
+
+.drilldown-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.drilldown-panel__error {
+  margin: 0 1rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--color-danger, #f87171);
+  font-size: 0.875rem;
+}
+
+.drilldown-panel__body {
+  position: relative;
+  min-height: 120px;
+}
+
+.drilldown-panel__loading {
+  padding: 2rem 1rem;
+}

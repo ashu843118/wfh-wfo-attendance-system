@@ -15,13 +15,34 @@ flowchart LR
     API --> Dashboard["Dashboard Module"]
     API --> Admin["Admin Module"]
 
-    Attendance --> Geo["Geofence Service"]
     Attendance --> Lock["Redisson Lock"]
+    Attendance --> Geo["Geofence Service"]
+    Attendance --> DBWrite["Attendance DB Writer"]
     Attendance --> OutboxWriter["Outbox Event Writer"]
-    Attendance --> Audit["Audit and Event Writer"]
 
-    Geo --> Redis["Redis Cache - office employee id"]
-    Geo --> PostGIS["PostgreSQL PostGIS - Office and Attendance Data"]
+    Geo --> OfficeCache["Office Cache Service"]
+    OfficeCache --> Redis["Redis Cache"]
+    OfficeCache --> PostGIS["PostgreSQL PostGIS"]
+
+    DBWrite --> Events["attendance_events - session mode"]
+    DBWrite --> Sessions["attendance_sessions - active session"]
+    DBWrite --> Records["attendance_records - daily summary"]
+
+    Events --> PostGIS
+    Sessions --> PostGIS
+    Records --> PostGIS
+
+    OutboxWriter --> OutboxTable["outbox_events table"]
+    OutboxTable --> Scheduler["Scheduled Outbox Poller"]
+    Scheduler --> AsyncProcessor["Async Event Processor"]
+
+    AsyncProcessor --> Notification["Notification Module"]
+    AsyncProcessor --> Outlier["Outlier Module"]
+    AsyncProcessor --> CacheRefresh["Dashboard Cache Refresh"]
+
+    Notification --> PostGIS
+    Outlier --> PostGIS
+    CacheRefresh --> Redis
 
     Dashboard --> Redis
     Dashboard --> PostGIS
@@ -29,21 +50,36 @@ flowchart LR
     Admin --> PostGIS
     Admin --> Redis
 
-    OutboxWriter --> OutboxTable["Outbox Events Table"]
-
-    Scheduler["Spring Scheduled Jobs"] --> OutboxTable
-    Scheduler --> EODJob["End of Day Attendance Close Job"]
-    Scheduler --> OutlierJob["Outlier Detection Job"]
-
-    OutboxTable --> AsyncProcessor["Async Event Processors"]
-    AsyncProcessor --> Notification["Notification Module"]
-    AsyncProcessor --> OutlierModule["Outlier Module"]
-    AsyncProcessor --> DashboardCache["Dashboard Cache Refresh"]
-
-    Notification --> PostGIS
-    OutlierModule --> PostGIS
-    EODJob --> PostGIS
+    EOD["End of Day Close Job"] --> Records
+    EOD --> Events
+    EOD --> OutboxTable
 ```
+
+---
+
+## Attendance Module Ownership
+
+The **Attendance Module** directly saves core attendance data in the same database transaction as the user-facing check-in/out response:
+
+| Persisted by Attendance Module | Purpose |
+|--------------------------------|---------|
+| `attendance_events` | Immutable audit log; each check-in stores **session mode** (WFO/WFH) |
+| `attendance_sessions` | Active/open work sessions; **DB is source of truth** for session state |
+| `attendance_records` | Daily summary with **final daily attendance mode** (WFO/WFH) |
+| `outbox_events` | Enqueued in the same transaction for async side effects only |
+
+The **outbox does not save the main attendance record**. Outbox processors handle async side effects only: notifications, dashboard cache refresh, outlier detection, manager alert updates, and retries.
+
+### Session mode vs daily mode
+
+| Concept | Scope | Storage | Rule |
+|---------|-------|---------|------|
+| **Session mode** | Per check-in / work session | `attendance_events.session_mode`, `attendance_sessions.session_mode` | Decided synchronously at check-in by backend geofence validation |
+| **Daily attendance mode** | Full day summary | `attendance_records.attendance_mode` | WFO if `total_office_minutes >= required_wfo_minutes`, else WFH |
+
+Multiple sessions on the same day may have different session modes. Dashboards use **final daily mode** from `attendance_records`. Employee session detail shows per-session WFO/WFH mode. **No HYBRID** daily status in MVP.
+
+`total_office_minutes` is calculated **only from WFO sessions**.
 
 ---
 
@@ -102,12 +138,12 @@ flowchart LR
 | Store / Table | Role |
 |---------------|------|
 | **PostgreSQL** | Employees, offices, policies, attendance records, sessions, events, outliers, notifications, outbox |
-| **`attendance_events`** | Immutable audit of all attendance actions |
-| **`attendance_sessions`** | Logical work sessions (WFO/WFH, open/closed, session mode) |
-| **`attendance_records`** | One daily summary row per employee per date for fast dashboard queries |
-| **Redis** | Performance cache and ephemeral state only — not source of truth |
+| **`attendance_events`** | Immutable audit of all attendance actions; check-in events store **session_mode** (WFO/WFH) |
+| **`attendance_sessions`** | Logical work sessions; **DB is source of truth** for active session state |
+| **`attendance_records`** | One daily summary row per employee per date; stores **final daily attendance_mode** |
+| **Redis** | Optional performance cache only — assigned office and today attendance status; **not source of truth** |
 
-Dashboards read **`attendance_records`** for KPIs and trends. Drill-down uses **`attendance_sessions`** and **`attendance_events`**.
+Dashboards read **`attendance_records`** for KPIs and trends (final daily mode). Drill-down uses **`attendance_sessions`** (per-session mode) and **`attendance_events`**. If Redis today-attendance cache is missing or unavailable, the system reads from PostgreSQL.
 
 ---
 
@@ -127,21 +163,35 @@ Multiple offices per employee via `employee_office_assignments` (`employee_id`, 
 
 ## Redis Usage
 
-### Assigned office cache
+Redis is a **cache and lock store only**. PostgreSQL/PostGIS remains the source of truth for attendance sessions and daily summaries.
+
+### 1. Assigned office cache
 
 | Item | Value |
 |------|-------|
-| Key pattern | `office:employee:{employeeId}` |
+| Key pattern | `office:employee:employeeId` (e.g. `office:employee:101`) |
 | Cached fields | `officeLocationId`, `officeName`, `address`, `latitude`, `longitude`, `radiusMeters`, `active` |
 | TTL | **900 seconds** (15 min) — `app.cache.employee-office-ttl-seconds` |
-| Flow | Redis → on miss load PostgreSQL → store with TTL → use for geofence |
+| Used for | Geofence validation; avoid repeated office DB lookup |
 | Invalidation | Employee office update; office create/update/delete (evicts affected employees) |
+
+### 2. Optional today attendance status cache
+
+| Item | Value |
+|------|-------|
+| Key pattern | `attendance:today:employeeId:date` (e.g. `attendance:today:101:2026-06-17`) |
+| Cached fields | `currentSessionStatus`, `currentSessionMode`, `attendanceMode`, `canCheckIn`, `canCheckOut`, `firstCheckInTime`, `finalCheckoutTime`, `totalOfficeMinutes` |
+| TTL | **180 seconds** default (1–5 min range) — `app.cache.today-attendance-ttl-seconds` |
+| Used for | Fast dashboard status lookup; avoid repeated DB read on refresh |
+| Invalidation | Evict or update on check-in, checkout, auto-checkout, WFH confirmed check-in, EOD system close |
+
+If Redis is unavailable or the cache entry is missing, the system loads today status from PostgreSQL.
 
 ### Auto-tracking session state
 
 | Item | Value |
 |------|-------|
-| Key pattern | `attendance:auto:session:{employeeId}:{date}` |
+| Key pattern | `attendance:auto:session:employeeId:date` |
 | Purpose | Inside/outside since timestamps, WFH prompt dismissed flag |
 | TTL | 24 hours |
 
@@ -149,8 +199,8 @@ Multiple offices per employee via `employee_office_assignments` (`employee_id`, 
 
 | Key pattern | Purpose |
 |-------------|---------|
-| `manager:dashboard:{managerId}:{date}` | Manager dashboard summary |
-| `leadership:dashboard:{date}` | Leadership dashboard summary |
+| `manager:dashboard:managerId:date` | Manager dashboard summary |
+| `leadership:dashboard:date` | Leadership dashboard summary |
 
 Evicted by `DashboardCacheRefreshProcessor` after classification completes. TTL: **60 seconds** default.
 
@@ -158,14 +208,14 @@ Evicted by `DashboardCacheRefreshProcessor` after classification completes. TTL:
 
 | Key pattern | Purpose |
 |-------------|---------|
-| `attendance:events:{employeeId}:{date}` | Prevent duplicate concurrent check-in/out for same employee/date |
+| `attendance:events:employeeId:date` | Prevent duplicate concurrent check-in/out for same employee/date |
 
 ### Login rate limiting
 
 | Key pattern | Purpose |
 |-------------|---------|
-| `auth:login:attempts:email:{email}` | Track failed login attempts per email (max 5 per 5 min) |
-| `auth:login:attempts:ip:{clientIp}` | Track failed login attempts per client IP (max 5 per 5 min) |
+| `auth:login:attempts:email:email` | Track failed login attempts per email (max 5 per 5 min) |
+| `auth:login:attempts:ip:clientIp` | Track failed login attempts per client IP (max 5 per 5 min) |
 
 PostgreSQL/PostGIS remains authoritative if cache is stale or evicted.
 
@@ -173,20 +223,40 @@ PostgreSQL/PostGIS remains authoritative if cache is stale or evicted.
 
 ## Attendance Write Path
 
+Check-in transaction (Attendance Module owns core persistence):
+
+1. `AttendanceService` receives check-in request.
+2. Acquire Redisson lock (`attendance:events:employeeId:date`).
+3. Check active session from **DB** (source of truth).
+4. Call Geofence Service.
+5. Geofence Service gets assigned office from Redis cache or DB/PostGIS.
+6. Backend decides `session_mode` = WFO or WFH (frontend does not decide).
+7. Save `attendance_event` with session mode.
+8. Create/update `attendance_session` and daily summary in `attendance_records`.
+9. Save `outbox_event` for async side effects only.
+10. Commit transaction; evict today attendance Redis cache.
+11. Return response to frontend.
+
 ```
 Client (location signal / check-in / check-out)
         │
         ▼
-Redisson lock acquired (attendance:events:{employeeId}:{date})
+Redisson lock acquired (attendance:events:employeeId:date)
         │
         ▼
-Geofence evaluation (Redis office cache → PostGIS)
+Check active session from DB
+        │
+        ▼
+Geofence evaluation (Redis office cache → PostGIS) → session_mode WFO or WFH
         │
         ▼
 Write attendance_event + attendance_session + attendance_record (transaction)
         │
         ▼
-Enqueue outbox_event (same transaction)
+Enqueue outbox_event (same transaction — async side effects only)
+        │
+        ▼
+Evict attendance:today:employeeId:date cache
         │
         ▼
 Return API response to client
@@ -260,7 +330,7 @@ Actions per open record:
 - **Valid range (admin API):** 50–300 meters.
 - **Demo office:** EY Bengaluru - Ecospace uses 100 meters.
 - Java distance helpers used for display; database/cache radius is authoritative for fence decisions.
-- Redis `office:employee:{id}` cache includes `radiusMeters`; evicted when office location is updated.
+- Redis `office:employee:employeeId` cache includes `radiusMeters`; evicted when office location is updated.
 
 ---
 

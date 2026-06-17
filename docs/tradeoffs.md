@@ -32,7 +32,7 @@ WFH is **never silently marked**. The user must confirm via the WFH prompt or ma
 
 | Choice | Rationale |
 |--------|-----------|
-| **One office per employee (MVP)** | Simple mental model, single Redis cache key (`office:employee:{id}`), straightforward geofence rules |
+| **One office per employee (MVP)** | Simple mental model, single Redis cache key (`office:employee:employeeId`), straightforward geofence rules |
 | **Multiple offices (future)** | Supports roaming staff, hot-desking, multi-campus via `employee_office_assignments` |
 
 ---
@@ -42,10 +42,16 @@ WFH is **never silently marked**. The user must confirm via the WFH prompt or ma
 | Choice | Rationale |
 |--------|-----------|
 | **Redis cache with TTL + invalidation** | Location signals during WFO monitoring and check-in evaluation benefit from fast office metadata lookup |
+| **Optional today attendance cache** | Short TTL cache (`attendance:today:employeeId:date`) speeds dashboard status refresh |
 | **DB always** | Correct but adds load on every signal; acceptable only at very small scale |
-| **Cache is not source of truth** | PostgreSQL/PostGIS remains authoritative; stale cache bounded by TTL (~15 min) and evicted on admin updates |
+| **Cache is not source of truth** | PostgreSQL/PostGIS remains authoritative for active sessions and daily summaries; stale cache bounded by TTL and evicted on writes |
 
 Redis also stores ephemeral auto-tracking state and dashboard cache entries — not durable attendance data.
+
+Two primary Redis usages:
+
+1. **Assigned office cache** — key `office:employee:employeeId` for geofence validation.
+2. **Today attendance status cache** — key `attendance:today:employeeId:date` for optional fast dashboard lookup; evicted on check-in, checkout, auto-checkout, WFH confirmed check-in, and EOD close.
 
 ---
 
@@ -53,9 +59,20 @@ Redis also stores ephemeral auto-tracking state and dashboard cache entries — 
 
 | Choice | Rationale |
 |--------|-----------|
-| **Events + sessions for detail** | Supports same-day re-check-in, full audit trail, geofence enter/exit history |
-| **Daily summary (`attendance_records`) for dashboards** | Fast manager/leadership aggregations without scanning all events |
-| **Derived fields on summary** | `first_check_in_time`, `final_check_out_time`, `total_office_minutes`, final `attendance_mode` computed from sessions |
+| **Events + sessions for detail** | Supports same-day re-check-in, full audit trail, geofence enter/exit history, **per-session WFO/WFH mode** |
+| **Daily summary (`attendance_records`) for dashboards** | Fast manager/leadership aggregations using **final daily mode** without scanning all events |
+| **Derived fields on summary** | `first_check_in_time`, `final_check_out_time`, `total_office_minutes` (WFO sessions only), final `attendance_mode` computed from sessions |
+| **DB source of truth for active session** | Active session state read from PostgreSQL; Redis today cache is optional |
+
+---
+
+## 5a. Attendance Module vs Outbox
+
+| Choice | Rationale |
+|--------|-----------|
+| **Attendance Module saves core data directly** | `attendance_events`, `attendance_sessions`, and `attendance_records` written in the same transaction as the API response |
+| **Outbox for async side effects only** | Notifications, dashboard cache refresh, outlier detection, manager alerts — not the main attendance record |
+| **Transactional outbox** | Reliable async processing without losing attendance writes |
 
 ---
 
@@ -64,9 +81,10 @@ Redis also stores ephemeral auto-tracking state and dashboard cache entries — 
 | Choice | Rationale |
 |--------|-----------|
 | **WFO or WFH only on dashboards (MVP)** | Simple reporting for managers and leadership |
+| **Session mode per check-in** | Multiple sessions per day may differ (e.g. WFO morning, WFH afternoon) |
 | **HYBRID label (deferred)** | `total_office_minutes` already captures split days; richer labels can be added later |
 
-Final mode rule: **WFO if `total_office_minutes >= required_wfo_minutes`, else WFH.**
+Final **daily** mode rule: **WFO if `total_office_minutes >= required_wfo_minutes`, else WFH.** Session mode is stored separately on each check-in.
 
 No HYBRID daily status appears on any dashboard in MVP.
 

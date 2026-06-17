@@ -95,6 +95,14 @@ Sort order varies by endpoint (documented per section below).
 
 Core employee attendance APIs. Location payloads require `latitude`, `longitude`, `accuracy`, and `timestamp`.
 
+The **Attendance Module** directly persists core data (`attendance_events`, `attendance_sessions`, `attendance_records`) in the same transaction as check-in/out. The **outbox** handles async side effects only (notifications, dashboard cache refresh, outlier detection). **DB is the source of truth** for active sessions. An optional Redis cache (`attendance:today:employeeId:date`) may speed today status lookup but is not authoritative.
+
+**Session mode vs daily mode:**
+
+- Each check-in stores **session mode** (WFO/WFH) on events and sessions — decided by backend geofence validation, not the frontend.
+- **Final daily mode** (WFO/WFH, no HYBRID) is stored on `attendance_records.attendance_mode` from `total_office_minutes` (WFO sessions only).
+- Multiple sessions per day may have different session modes.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/attendance/me/today` | Today's daily summary + session status |
@@ -190,6 +198,18 @@ Core employee attendance APIs. Location payloads require `latitude`, `longitude`
 | `status` | e.g. `CHECKED_IN`, `CHECKED_OUT`, `MISSING_CHECKOUT` |
 | `processingStatus` | `CLASSIFICATION_PENDING` or `COMPLETED` |
 
+`GET /api/attendance/me/today` may read from optional Redis cache (`attendance:today:employeeId:date`, TTL 1–5 min) with PostgreSQL as fallback.
+
+### Attendance event (`AttendanceEventResponse`)
+
+| Field | Meaning |
+|-------|---------|
+| `sessionMode` | WFO or WFH for check-in events (null for checkout/system events) |
+| `matchedOfficeLocationId` | Assigned office matched when inside geofence |
+| `distanceFromOfficeMeters` | Distance to assigned office at check-in time |
+| `source` | Event source channel (e.g. `PWA`, `AUTO_PWA`, `SYSTEM`) |
+| `triggerMode` | `MANUAL`, `AUTO`, or `SYSTEM` |
+
 Times are stored in UTC; the frontend displays them in browser local timezone.
 
 ---
@@ -265,7 +285,7 @@ Base path: `/api/admin`
 
 **Office fields:** `officeName`, `address`, `latitude`, `longitude`, `radiusMeters` (50–300, default 100), `active`.
 
-Updates invalidate Redis `office:employee:{id}` cache entries for affected employees.
+Updates invalidate Redis `office:employee:employeeId` cache entries for affected employees.
 
 ### Attendance policies
 
@@ -324,13 +344,15 @@ Manager team outliers also available at `GET /api/manager/outliers`.
 1. **Before check-in** — `POST /location-signal` with one location read:
    - Inside assigned office → auto WFO after stability period (~15s demo).
    - Outside → `requiresWfhConfirmation: true`; confirm via `POST /wfh-check-in`.
-2. **Manual check-in** — `POST /check-in` classifies WFO (inside) or WFH (outside).
+2. **Manual check-in** — `POST /check-in` classifies session mode WFO (inside) or WFH (outside); backend decides from geofence.
 3. **WFO auto-checkout** — `POST /location-signal` from WFO watcher while app open; outside for grace period (~60s demo) triggers auto checkout. Applies to **all WFO sessions** (auto and manual).
 4. **WFH sessions** — no continuous location signals; manual checkout or EOD close.
 5. **Manual checkout** — `POST /check-out` closes any open session.
 6. **Same-day re-check-in** — allowed after checkout when `currentSessionStatus` is not `OPEN`.
-7. **Final daily mode** — WFO if `totalOfficeMinutes >= requiredWfoMinutes`; else WFH. No HYBRID.
-8. **EOD close** — scheduler closes open sessions at 23:59:59; creates `SYSTEM_DAY_CLOSE` event.
+7. **Final daily mode** — WFO if `totalOfficeMinutes >= requiredWfoMinutes` (from WFO sessions only); else WFH. No HYBRID. Per-session mode is separate.
+8. **EOD close** — scheduler closes open sessions at 23:59:59; creates `SYSTEM_DAY_CLOSE` event; evicts today attendance cache.
+9. **Manager dashboards** — use final daily `attendance_mode` from `attendance_records`.
+10. **Employee session history** — shows per-session WFO/WFH from `attendance_sessions`.
 
 See [attendance-flow.md](attendance-flow.md) and [architecture.md](architecture.md) for full rules.
 

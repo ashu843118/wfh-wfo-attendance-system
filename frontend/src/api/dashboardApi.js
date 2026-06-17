@@ -18,6 +18,13 @@ export async function getManagerTeamAttendance({ page = 0, size = 20, date } = {
   return unwrapResponse(response)
 }
 
+export async function getManagerDashboardDrilldown({ type, page = 0, size = 10, date } = {}) {
+  const params = { type, page, size }
+  if (date) params.date = date
+  const response = await apiClient.get('/api/manager/dashboard/drilldown', { params })
+  return unwrapResponse(response)
+}
+
 export async function getManagerOutliers(page = 0, size = 20) {
   const response = await apiClient.get('/api/manager/outliers', {
     params: { page, size },

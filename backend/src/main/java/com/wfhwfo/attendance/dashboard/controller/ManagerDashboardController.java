@@ -5,7 +5,10 @@ import com.wfhwfo.attendance.attendance.entity.AttendanceRecord;
 import com.wfhwfo.attendance.common.dto.ApiResponse;
 import com.wfhwfo.attendance.common.dto.PagedResponse;
 import com.wfhwfo.attendance.common.dto.PagedResponseMapper;
+import com.wfhwfo.attendance.config.PaginationConfig;
 import com.wfhwfo.attendance.config.OpenApiResponseDocs;
+import com.wfhwfo.attendance.dashboard.dto.ManagerDashboardDrilldownDto;
+import com.wfhwfo.attendance.dashboard.dto.ManagerDashboardDrilldownType;
 import com.wfhwfo.attendance.dashboard.dto.ManagerDashboardResponse;
 import com.wfhwfo.attendance.dashboard.dto.TeamAttendanceRowResponse;
 import com.wfhwfo.attendance.dashboard.service.ManagerDashboardService;
@@ -16,6 +19,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -45,6 +49,21 @@ public class ManagerDashboardController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         ManagerDashboardResponse response = managerDashboardService.getDashboardSummary(date);
         return ResponseEntity.ok(ApiResponse.success("Manager dashboard fetched", response));
+    }
+
+    @GetMapping("/dashboard/drilldown")
+    @Operation(summary = "Get paginated KPI drill-down details for the manager dashboard")
+    @OpenApiResponseDocs.StandardApiResponses
+    public ResponseEntity<ApiResponse<PagedResponse<ManagerDashboardDrilldownDto>>> getDrilldown(
+            @RequestParam ManagerDashboardDrilldownType type,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        int effectiveSize = Math.min(Math.max(size, 1), PaginationConfig.MAX_PAGE_SIZE);
+        Pageable pageable = PageRequest.of(Math.max(page, 0), effectiveSize);
+        PagedResponse<ManagerDashboardDrilldownDto> response =
+                managerDashboardService.getDrilldown(type, date, pageable);
+        return ResponseEntity.ok(ApiResponse.success("Dashboard drill-down fetched", response));
     }
 
     @GetMapping("/team-attendance")

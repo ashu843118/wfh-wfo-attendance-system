@@ -48,6 +48,7 @@ public class AttendanceWriteService {
     private final DailySummaryService dailySummaryService;
     private final OutboxService outboxService;
     private final EmployeeOfficeCacheService employeeOfficeCacheService;
+    private final TodayAttendanceCacheService todayAttendanceCacheService;
     private final AssignedOfficeGeofenceService assignedOfficeGeofenceService;
     private final LocationReliabilityService locationReliabilityService;
 
@@ -198,6 +199,8 @@ public class AttendanceWriteService {
                 summary.getAttendanceDate(),
                 savedSummary.getId());
 
+        todayAttendanceCacheService.evict(summary.getEmployeeId(), summary.getAttendanceDate());
+
         return buildActionResponse(savedSummary, closeTime, savedEvent.getId());
     }
 
@@ -279,6 +282,8 @@ public class AttendanceWriteService {
                     recordedAt);
         }
 
+        AttendanceMode eventSessionMode = linkedSession != null ? linkedSession.getSessionMode() : null;
+
         AttendanceEvent event = AttendanceEvent.builder()
                 .employeeId(user.getEmployeeId())
                 .teamId(user.getTeamId())
@@ -292,6 +297,8 @@ public class AttendanceWriteService {
                 .accuracy(location.getAccuracy())
                 .geoPoint(GeoPointUtils.createPoint(location.getLatitude(), location.getLongitude()))
                 .matchedOfficeLocationId(matchedOfficeId)
+                .distanceFromOfficeMeters(isCheckInLikeEvent(eventType) ? distanceMeters : null)
+                .sessionMode(isCheckInLikeEvent(eventType) ? eventSessionMode : null)
                 .source(source)
                 .triggerMode(triggerMode)
                 .valid(true)
@@ -330,6 +337,7 @@ public class AttendanceWriteService {
         }
 
         logAttendanceAction(user.getEmployeeId(), eventType, triggerMode, linkedSession);
+        todayAttendanceCacheService.evict(user.getEmployeeId(), today);
 
         return buildActionResponse(savedSummary, recordedAt, savedEvent.getId());
     }

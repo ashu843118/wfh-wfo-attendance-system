@@ -14,7 +14,12 @@ The WFH/WFO Attendance Tracking System validates employee presence against an **
 - **After WFO check-in:** limited geofence monitoring supports auto-checkout only.
 - **During WFH sessions:** no continuous location tracking.
 
-Final daily attendance mode is **WFO or WFH only** (no HYBRID). Times are stored in **UTC** and displayed in the **browser local timezone** (e.g. IST for users in India).
+Final daily attendance mode is **WFO or WFH only** (no HYBRID). Two concepts are stored separately:
+
+- **Session mode** — WFO/WFH per check-in session, decided by backend geofence validation.
+- **Daily attendance mode** — final WFO/WFH for the day in `attendance_records`, based on `total_office_minutes` from WFO sessions only.
+
+Times are stored in **UTC** and displayed in the **browser local timezone** (e.g. IST for users in India).
 
 ---
 
@@ -24,7 +29,8 @@ Final daily attendance mode is **WFO or WFH only** (no HYBRID). Times are stored
 |------|----------|
 | **Attendance** | Auto WFO check-in, WFH confirmation prompt, manual check-in/out, same-day re-check-in, WFO auto-checkout monitoring |
 | **Geo-fencing** | PostGIS geofence validation against assigned office; Redis-cached office lookup |
-| **Summaries** | Daily `attendance_records` with office minutes and final WFO/WFH mode |
+| **Summaries** | Daily `attendance_records` with final WFO/WFH mode and office minutes |
+| **Sessions** | Per check-in session mode (WFO/WFH) in `attendance_sessions` and `attendance_events` |
 | **History** | Full `attendance_events` and `attendance_sessions` audit trail |
 | **Dashboards** | Employee, Manager, Leadership role-specific views |
 | **Admin** | Employee, office location, and attendance policy management |
@@ -56,15 +62,18 @@ React PWA  ──HTTPS/JWT──►  Spring Boot Modular Monolith
                     ┌───────────────┼───────────────┐
                     ▼               ▼               ▼
               PostgreSQL         Redis          Outbox + Schedulers
-              + PostGIS       (cache/locks)    (async side effects)
+              + PostGIS       (cache/locks)    (async side effects only)
 ```
 
 | Component | Role |
 |-----------|------|
-| **PostgreSQL/PostGIS** | Source of truth — employees, offices, attendance, outliers |
-| **Redis** | Assigned office cache, auto-tracking state, dashboard cache, distributed locks |
-| **Outbox poller** | Async classification, outlier detection, notifications, cache refresh |
+| **PostgreSQL/PostGIS** | Source of truth — employees, offices, attendance sessions, events, daily summaries |
+| **Redis** | Assigned office cache, optional today attendance cache, auto-tracking state, dashboard cache, distributed locks |
+| **Attendance Module** | Directly saves `attendance_events`, `attendance_sessions`, `attendance_records` |
+| **Outbox poller** | Async side effects only — classification, outlier detection, notifications, cache refresh |
 | **Day-close scheduler** | EOD system close for open sessions at 23:59:59 |
+
+The **DB is the source of truth** for active attendance sessions. Redis caches are optional performance layers.
 
 See [docs/architecture.md](docs/architecture.md) for the full architecture diagram and module breakdown.
 
@@ -139,9 +148,13 @@ After checkout, check-in is enabled again and the same location evaluation flow 
 
 ### Daily summary
 
-- `total_office_minutes` = sum of WFO session durations.
+- **Session mode** (WFO/WFH) is stored per check-in in `attendance_events` and `attendance_sessions`.
+- **Final daily mode** (WFO/WFH) is stored separately in `attendance_records.attendance_mode`.
+- `total_office_minutes` = sum of **WFO session** durations only.
 - Final mode: **WFO** if `total_office_minutes >= required_wfo_minutes` (default 180), else **WFH**.
+- Multiple sessions per day may have different session modes; daily summary shows only final WFO or WFH.
 - **No HYBRID** daily status in MVP.
+- Backend decides session mode from geofence — frontend does not classify WFO/WFH.
 
 Full rules: [docs/attendance-flow.md](docs/attendance-flow.md)
 
@@ -218,7 +231,7 @@ API reference: [docs/api-design.md](docs/api-design.md)
 | Manager | `GET /api/manager/dashboard-summary` | Team KPIs, WFO/WFH counts, outliers |
 | Leadership | `GET /api/leadership/dashboard` | Organization-wide aggregates and trends |
 
-Dashboards read from **`attendance_records`** daily summaries. Drill-down uses paginated session and event APIs.
+Dashboards read from **`attendance_records`** daily summaries (final daily mode). Manager drill-down uses final daily mode. Employee session/event APIs show per-session WFO/WFH mode.
 
 ---
 
